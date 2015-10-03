@@ -3,7 +3,10 @@ use std::sync::RwLock;
 use std::sync::mpsc::channel;
 use std::thread;
 
-use rand::random;
+use rand::{
+    Rng,
+    thread_rng,
+};
 use scoped_threadpool::Pool as ThreadPool;
 
 use CoroutineJoinHandle;
@@ -55,9 +58,14 @@ impl Pool {
               T: Send + 'static
     {
         let (coroutine_result_sender, coroutine_result_receiver) = channel();
-        thread::spawn(move || {
-          coroutine_result_sender.send(coroutine_body());
-        });
+        let worker_thread = thread_rng()
+            .choose(&self.thread_schedulers)
+            .expect("Cannot spawn threads on uninitialized pool");
+
+        worker_thread.send(Box::new(move || {
+            // Need to catch panic here
+            coroutine_result_sender.send(coroutine_body());
+        }));
 
         CoroutineJoinHandle::<T>::new(coroutine_result_receiver)
     }

@@ -1,3 +1,5 @@
+#![feature(unboxed_closures)]
+
 extern crate context;
 extern crate deque;
 extern crate libc;
@@ -15,3 +17,6 @@ pub mod pool;
 
 use std::result;
 pub type Result<'a, T> = result::Result<T, CoroError<'a>>;
+
+pub type CoroutineBodyReturn = Send + 'static;
+pub type CoroutineBody = FnOnce() -> CoroutineBodyReturn + Send + 'static;
