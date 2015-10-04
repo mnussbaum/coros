@@ -1,26 +1,44 @@
-use std::sync::mpsc::Receiver;
+use std::borrow::Borrow;
+use std::boxed::FnBox;
+use std::mem;
 
-use Result;
+use libc;
+use context::{
+    Context,
+    Stack,
+};
 
-pub struct CoroutineJoinHandle<T>
-    where T: Send + 'static
-{
-    coroutine_result_receiver: Receiver<T>,
+pub struct Coroutine {
+    pub context: Context,
 }
 
-impl<T> CoroutineJoinHandle<T>
-    where T: Send + 'static
-{
+extern "C" fn context_func(parent_context_ptr: usize, boxed_context_body: *mut libc::c_void) -> ! {
+    unsafe {
+        let context_body: Box<Box<FnBox()>> = Box::from_raw(boxed_context_body as *mut Box<FnBox()>);
+        context_body()
+    };
 
-    pub fn new(coroutine_result_receiver: Receiver<T>) -> CoroutineJoinHandle<T>
+    let parent_context: &mut Context = unsafe { mem::transmute(parent_context_ptr) };
+    Context::load(parent_context);
+
+    unreachable!("Coros internal error, execution should never reach here");
+}
+
+impl Coroutine {
+    pub fn new(coroutine_body: Box<FnOnce() + Send + 'static>, parent_context: &Context, stack: &mut Stack) -> Coroutine
     {
-        CoroutineJoinHandle {
-            coroutine_result_receiver: coroutine_result_receiver,
-        }
-    }
+        let parent_context_ptr = {
+            &*parent_context.borrow() as *const Context
+        };
+        let context = Context::new(
+            context_func,
+            parent_context_ptr as usize,
+            Box::into_raw(Box::new(coroutine_body)) as *mut libc::c_void,
+            stack,
+        );
 
-    pub fn join(&self) -> Result<T> {
-        let coroutine_result = try!(self.coroutine_result_receiver.recv());
-        Ok(coroutine_result)
+        Coroutine {
+            context: context,
+        }
     }
 }

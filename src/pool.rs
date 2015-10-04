@@ -1,7 +1,6 @@
 use std::fmt;
 use std::sync::RwLock;
 use std::sync::mpsc::channel;
-use std::thread;
 
 use rand::{
     Rng,
@@ -43,7 +42,7 @@ impl fmt::Debug for Pool {
 
 impl Pool {
     pub fn new(name: String, thread_count: u32) -> Pool {
-        let thread_schedulers = (1..thread_count).map (|_| {
+        let thread_schedulers = (0..thread_count).map (|_| {
             ThreadScheduler::new()
         }).collect();
         Pool {
@@ -64,7 +63,7 @@ impl Pool {
 
         worker_thread.send(Box::new(move || {
             // Need to catch panic here
-            coroutine_result_sender.send(coroutine_body());
+            coroutine_result_sender.send(coroutine_body()).unwrap();
         }));
 
         CoroutineJoinHandle::<T>::new(coroutine_result_receiver)
@@ -81,7 +80,13 @@ impl Pool {
         Ok(())
     }
 
-    pub fn stop(&self) {
+    pub fn stop(&self) -> Result<()> {
+        let thread_pool =  try!(self.thread_pool.write());
+        for thread_scheduler in self.thread_schedulers.iter() {
+            thread_scheduler.stop();
+        }
+        thread_pool.join_all();
+        Ok(())
     }
 }
 
@@ -94,9 +99,36 @@ mod test {
         let pool_name = "a_name".to_string();
         let pool = Pool::new(pool_name, 1);
         let guard = pool.spawn(|| 1);
-        pool.start();
-        pool.stop();
+        pool.start().unwrap();
 
         assert_eq!(1, guard.join().unwrap());
+
+        pool.stop().unwrap();
+    }
+
+    #[test]
+    fn test_spawning_after_start() {
+        let pool_name = "a_name".to_string();
+        let pool = Pool::new(pool_name, 1);
+        pool.start().unwrap();
+        let guard = pool.spawn(|| 1);
+
+        assert_eq!(1, guard.join().unwrap());
+
+        pool.stop().unwrap();
+    }
+
+    #[test]
+    fn test_spawning_multiple_coroutines() {
+        let pool_name = "a_name".to_string();
+        let pool = Pool::new(pool_name, 1);
+        pool.start().unwrap();
+        let guard1 = pool.spawn(|| 1);
+        let guard2 = pool.spawn(|| 2);
+
+        assert_eq!(1, guard1.join().unwrap());
+        assert_eq!(2, guard2.join().unwrap());
+
+        pool.stop().unwrap();
     }
 }

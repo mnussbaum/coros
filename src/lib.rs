@@ -1,4 +1,4 @@
-#![feature(unboxed_closures)]
+#![feature(fnbox)]
 
 extern crate context;
 extern crate deque;
@@ -8,8 +8,9 @@ extern crate mio;
 extern crate rand;
 extern crate scoped_threadpool;
 
-pub mod coroutine;
-pub use coroutine::CoroutineJoinHandle;
+mod coroutine;
+pub mod coroutine_join_handle;
+pub use coroutine_join_handle::CoroutineJoinHandle;
 pub mod error;
 pub use error::CoroError;
 pub mod thread_scheduler;
