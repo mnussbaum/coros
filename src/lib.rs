@@ -22,3 +22,4 @@ pub type Result<'a, T> = result::Result<T, CoroError<'a>>;
 
 use std::thread::Result as ThreadResult;
 pub type CoroutineResult<T> = ThreadResult<T>;
+pub type CoroutineWork = Box<FnOnce() + Send + 'static>;

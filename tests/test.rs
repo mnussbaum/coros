@@ -1,6 +1,14 @@
+extern crate time;
+
 extern crate coros;
 
 use std::thread;
+
+use time::{
+    now,
+    Duration
+};
+
 use coros::Pool;
 
 #[test]
@@ -51,6 +59,9 @@ fn test_coroutine_panic() {
     let guard3 = pool.spawn(|| panic!("panic3") );
     let guard4 = pool.spawn(|| 4 );
     let guard5 = pool.spawn(|| 5 );
+    assert!(guard1.join().unwrap().is_err());
+    assert!(guard2.join().unwrap().is_err());
+    assert!(guard3.join().unwrap().is_err());
     assert_eq!(4, guard4.join().unwrap().unwrap());
     assert_eq!(5, guard5.join().unwrap().unwrap());
 
@@ -62,7 +73,24 @@ fn test_coroutine_panic() {
 fn test_dropping_the_pool_stops_it() {
     let pool_name = "a_name".to_string();
     let pool = Pool::new(pool_name, 1);
-    let guard = pool.spawn(|| 1 );
+    pool.spawn(|| 1 );
 
     pool.start().unwrap();
+}
+
+#[test]
+fn test_work_stealing() {
+    let pool_name = "a_name".to_string();
+    let pool = Pool::new(pool_name, 2);
+    let guard2 = pool.spawn_with_thread_index(|| { 2 }, 0);
+    let guard1 = pool.spawn_with_thread_index(|| { thread::sleep_ms(500); 1 }, 0);
+
+    let start_time = now();
+    pool.start().unwrap();
+    assert_eq!(2, guard2.join().unwrap().unwrap());
+
+    assert!((now() - start_time) < Duration::milliseconds(500));
+    assert_eq!(1, guard1.join().unwrap().unwrap());
+    assert!((now() - start_time) >= Duration::milliseconds(500));
+    pool.stop().unwrap();
 }

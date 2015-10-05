@@ -9,39 +9,51 @@ use context::{
     Stack,
 };
 use deque::{
-    BufferPool,
     Stealer,
+    Stolen,
     Worker,
 };
 
 use coroutine::Coroutine;
+use CoroutineWork;
 
 pub struct ThreadScheduler {
     keep_running: AtomicBool,
-    work_receiver: Worker<Box<FnOnce() + Send + 'static>>,
-    work_sender: Stealer<Box<FnOnce() + Send + 'static>>,
+    work_provider: Worker<CoroutineWork>,
+    work_stealers: Vec<Stealer<CoroutineWork>>,
 }
 
 impl ThreadScheduler {
-    pub fn new() -> ThreadScheduler {
-        let (work_receiver, work_sender) = BufferPool::new().deque();
+    pub fn new(work_provider: Worker<CoroutineWork>,
+               work_stealers: Vec<Stealer<CoroutineWork>>) -> ThreadScheduler {
         ThreadScheduler {
             keep_running: AtomicBool::new(true),
-            work_receiver: work_receiver,
-            work_sender: work_sender,
+            work_provider: work_provider,
+            work_stealers: work_stealers,
         }
     }
 
+    fn execute_work(&self, work: CoroutineWork) {
+        let mut empty_context = Context::empty();
+        let mut stack = Stack::new(2 * 1024 * 1024);
+        let coroutine = Coroutine::new(work, &empty_context, &mut stack);
+        Context::swap(&mut empty_context, &coroutine.context);
+    }
+
     pub fn start(&self) {
+        'eventloop:
         while self.keep_running.load(Ordering::SeqCst) {
-            match self.work_receiver.pop() {
-                Some(work) => {
-                    let mut empty_context = Context::empty();
-                    let mut stack = Stack::new(2 * 1024 * 1024);
-                    let coroutine = Coroutine::new(work, &empty_context, &mut stack);
-                    Context::swap(&mut empty_context, &coroutine.context);
-                }
-                None => thread::sleep_ms(100),
+            match self.work_provider.pop() {
+                Some(work) => self.execute_work(work),
+                None => {
+                    for work_stealer in self.work_stealers.iter() {
+                        if let Stolen::Data(work) = work_stealer.steal() {
+                            self.execute_work(work);
+                            continue 'eventloop;
+                        }
+                    }
+                    thread::sleep_ms(100);
+                },
             }
         };
     }
@@ -50,7 +62,7 @@ impl ThreadScheduler {
         self.keep_running.store(false, Ordering::SeqCst);
     }
 
-    pub fn send(&self, work: Box<FnOnce() + Send + 'static>) {
-        self.work_receiver.push(work);
+    pub fn send(&self, work: CoroutineWork) {
+        self.work_provider.push(work);
     }
 }

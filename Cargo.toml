@@ -17,6 +17,9 @@ log = "^0.3.1"
 num_cpus = "*"
 rand = "^0.3.10"
 
+[dev-dependencies]
+time = "0.1.32"
+
 [dependencies.deque]
 git = "https://github.com/kinghajj/deque.git"
 
