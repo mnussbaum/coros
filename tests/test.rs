@@ -57,3 +57,12 @@ fn test_coroutine_panic() {
     pool.stop().unwrap();
     assert!(true);
 }
+
+#[test]
+fn test_dropping_the_pool_stops_it() {
+    let pool_name = "a_name".to_string();
+    let pool = Pool::new(pool_name, 1);
+    let guard = pool.spawn(|| 1 );
+
+    pool.start().unwrap();
+}

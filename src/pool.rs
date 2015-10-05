@@ -92,3 +92,9 @@ impl Pool {
         Ok(())
     }
 }
+
+impl Drop for Pool {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
