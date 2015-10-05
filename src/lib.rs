@@ -1,4 +1,4 @@
-#![feature(fnbox)]
+#![feature(catch_panic, fnbox)]
 
 extern crate context;
 extern crate deque;
@@ -21,3 +21,6 @@ pub type Result<'a, T> = result::Result<T, CoroError<'a>>;
 
 pub type CoroutineBodyReturn = Send + 'static;
 pub type CoroutineBody = FnOnce() -> CoroutineBodyReturn + Send + 'static;
+
+use std::thread::Result as ThreadResult;
+pub type CoroutineResult<T> = ThreadResult<T>;

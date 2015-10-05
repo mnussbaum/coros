@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::RwLock;
 use std::sync::mpsc::channel;
+use std::thread;
 
 use rand::{
     Rng,
@@ -62,8 +63,10 @@ impl Pool {
             .expect("Cannot spawn threads on uninitialized pool");
 
         worker_thread.send(Box::new(move || {
-            // Need to catch panic here
-            coroutine_result_sender.send(coroutine_body()).unwrap();
+            let maybe_coroutine_result = thread::catch_panic(move || {
+                coroutine_body()
+            });
+            coroutine_result_sender.send(maybe_coroutine_result).unwrap();
         }));
 
         CoroutineJoinHandle::<T>::new(coroutine_result_receiver)
@@ -101,7 +104,7 @@ mod test {
         let guard = pool.spawn(|| 1);
         pool.start().unwrap();
 
-        assert_eq!(1, guard.join().unwrap());
+        assert_eq!(1, guard.join().unwrap().unwrap());
 
         pool.stop().unwrap();
     }
@@ -113,7 +116,7 @@ mod test {
         pool.start().unwrap();
         let guard = pool.spawn(|| 1);
 
-        assert_eq!(1, guard.join().unwrap());
+        assert_eq!(1, guard.join().unwrap().unwrap());
 
         pool.stop().unwrap();
     }
@@ -126,9 +129,26 @@ mod test {
         let guard1 = pool.spawn(|| 1);
         let guard2 = pool.spawn(|| 2);
 
-        assert_eq!(1, guard1.join().unwrap());
-        assert_eq!(2, guard2.join().unwrap());
+        assert_eq!(1, guard1.join().unwrap().unwrap());
+        assert_eq!(2, guard2.join().unwrap().unwrap());
 
         pool.stop().unwrap();
+    }
+
+    #[test]
+    fn test_coroutine_panic() {
+        let pool_name = "a_name".to_string();
+        let pool = Pool::new(pool_name, 1);
+        pool.start().unwrap();
+        let guard1 = pool.spawn(|| panic!("panic1") );
+        let guard2 = pool.spawn(|| panic!("panic2") );
+        let guard3 = pool.spawn(|| panic!("panic3") );
+        let guard4 = pool.spawn(|| 4 );
+        let guard5 = pool.spawn(|| 5 );
+        assert_eq!(4, guard4.join().unwrap().unwrap());
+        assert_eq!(5, guard5.join().unwrap().unwrap());
+
+        pool.stop().unwrap();
+        assert!(true);
     }
 }
