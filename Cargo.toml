@@ -5,6 +5,11 @@ authors = ["mnussbaum <michaelnussbaum08@gmail.com>"]
 
 [lib]
 name = "coros"
+test = true
+
+[[test]]
+name = "test"
+path = "tests/test.rs"
 
 [dependencies]
 libc = "^0.1.10"

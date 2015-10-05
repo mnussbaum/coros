@@ -9,18 +9,16 @@ extern crate rand;
 extern crate scoped_threadpool;
 
 mod coroutine;
-pub mod coroutine_join_handle;
+mod coroutine_join_handle;
 pub use coroutine_join_handle::CoroutineJoinHandle;
-pub mod error;
+mod error;
 pub use error::CoroError;
-pub mod thread_scheduler;
-pub mod pool;
+mod thread_scheduler;
+mod pool;
+pub use pool::Pool;
 
 use std::result;
 pub type Result<'a, T> = result::Result<T, CoroError<'a>>;
-
-pub type CoroutineBodyReturn = Send + 'static;
-pub type CoroutineBody = FnOnce() -> CoroutineBodyReturn + Send + 'static;
 
 use std::thread::Result as ThreadResult;
 pub type CoroutineResult<T> = ThreadResult<T>;
