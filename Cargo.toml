@@ -12,7 +12,6 @@ name = "test"
 path = "tests/test.rs"
 
 [dependencies]
-libc = "^0.1.10"
 log = "^0.3.1"
 num_cpus = "*"
 rand = "^0.3.10"
@@ -24,7 +23,7 @@ time = "0.1.32"
 git = "https://github.com/kinghajj/deque.git"
 
 [dependencies.context]
-git = "https://github.com/zonyitoo/context-rs.git"
+git = "https://github.com/mnussbaum/context-rs.git"
 
 [dependencies.mio]
 git = "https://github.com/carllerche/mio.git"

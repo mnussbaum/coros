@@ -1,7 +1,6 @@
 use std::fmt;
 use std::sync::RwLock;
 use std::sync::mpsc::channel;
-use std::thread;
 
 use deque::{
     BufferPool,
@@ -15,29 +14,24 @@ use rand::{
 use scoped_threadpool::Pool as ThreadPool;
 
 use CoroutineJoinHandle;
-use CoroutineWork;
 use Result;
+use coroutine::{
+    Coroutine,
+    CoroutineHandle,
+    CoroutineState,
+};
 use thread_scheduler::ThreadScheduler;
 
 pub struct Pool {
     pub name: String,
+    thread_count: u32,
     thread_pool: RwLock<ThreadPool>,
     thread_schedulers: Vec<ThreadScheduler>,
 }
 
 impl fmt::Display for Pool {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.thread_pool.try_read() {
-            Ok(thread_pool) => {
-                write!(
-                    f,
-                    "Pool {} with {} threads",
-                    self.name,
-                    thread_pool.thread_count(),
-                )
-            },
-            Err(_) => write!(f, "Pool {}", self.name),
-        }
+        write!(f, "Pool {} with {} threads", self.name, self.thread_count)
     }
 }
 
@@ -52,6 +46,7 @@ impl Pool {
         let thread_schedulers = Pool::create_thread_schedulers(thread_count);
         Pool {
             name: name,
+            thread_count: thread_count,
             thread_pool: RwLock::new(ThreadPool::new(thread_count)),
             thread_schedulers: thread_schedulers,
         }
@@ -59,10 +54,10 @@ impl Pool {
 
     fn create_thread_schedulers(thread_count: u32) -> Vec<ThreadScheduler> {
         let thread_count: usize = thread_count as usize;
-        let mut work_stealers: Vec<Stealer<CoroutineWork>> = Vec::with_capacity(thread_count);
-        let mut work_providers: Vec<Worker<CoroutineWork>> = Vec::with_capacity(thread_count);
+        let mut work_stealers: Vec<Stealer<Coroutine>> = Vec::with_capacity(thread_count);
+        let mut work_providers: Vec<Worker<Coroutine>> = Vec::with_capacity(thread_count);
         for _ in (0..thread_count) {
-            let (work_provider, work_stealer) = BufferPool::<CoroutineWork>::new().deque();
+            let (work_provider, work_stealer) = BufferPool::<Coroutine>::new().deque();
             work_providers.push(work_provider);
             work_stealers.push(work_stealer);
         }
@@ -75,51 +70,50 @@ impl Pool {
         thread_schedulers
     }
 
-    fn spawn_with_thread<F, T>(&self, coroutine_body: F, worker_thread: &ThreadScheduler) -> CoroutineJoinHandle<T>
-        where F: FnOnce() -> T + Send + 'static,
-              T: Send + 'static
+    pub fn spawn_with_thread_index<F, T>(&mut self, coroutine_body: F, thread_index: u32) -> CoroutineJoinHandle<T>
+        where F: FnOnce(&mut CoroutineHandle) -> T + Send + 'static,
+              T: Send + 'static,
     {
+        let error_message = format!(
+            "Corors error: cannot spawn in thread {} in a pool of size {}",
+            thread_index,
+            self.thread_count,
+        );
+        let worker_thread = self.thread_schedulers
+            .get_mut(thread_index as usize)
+            .expect(&error_message[..]);
+
         let (coroutine_result_sender, coroutine_result_receiver) = channel();
+        let coroutine_function = Box::new(move |coroutine_handle: &mut CoroutineHandle| {
+            let maybe_coroutine_result = coroutine_body(coroutine_handle);
 
-        worker_thread.send(Box::new(move || {
-            let maybe_coroutine_result = thread::catch_panic(move || {
-                coroutine_body()
-            });
-
+            coroutine_handle.coroutine.state = CoroutineState::Terminated;
             coroutine_result_sender
                 .send(maybe_coroutine_result)
-                .expect("Error attempting to send coroutine result to closed channel");
-        }));
+                .expect("Coros error: attempting to send coroutine result to closed channel");
+        });
+
+        let coroutine = Coroutine::new(
+            coroutine_function,
+            worker_thread.take_stack(2 * 1024 * 1024),
+        );
+
+        worker_thread.send(coroutine);
 
         CoroutineJoinHandle::<T>::new(coroutine_result_receiver)
     }
 
-    pub fn spawn<F, T>(&self, coroutine_body: F) -> CoroutineJoinHandle<T>
-        where F: FnOnce() -> T + Send + 'static,
-              T: Send + 'static
+    pub fn spawn<F, T>(&mut self, coroutine_body: F) -> CoroutineJoinHandle<T>
+        where F: FnOnce(&mut CoroutineHandle) -> T + Send + 'static,
+              T: Send + 'static,
     {
-        let worker_thread = thread_rng()
-            .choose(&self.thread_schedulers)
-            .expect("Cannot spawn threads on uninitialized pool");
-
-        self.spawn_with_thread(coroutine_body, worker_thread)
+        let thread_count = self.thread_count;
+        self.spawn_with_thread_index(
+            coroutine_body,
+            thread_rng().gen_range(0, thread_count) as u32,
+        )
     }
 
-    pub fn spawn_with_thread_index<F, T>(&self, coroutine_body: F, thread_index: u32) -> CoroutineJoinHandle<T>
-        where F: FnOnce() -> T + Send + 'static,
-              T: Send + 'static
-    {
-        let error_message = format!(
-            "Cannot spawn in thread {} in a pool of size {}",
-            thread_index,
-            self.thread_schedulers.len(),
-        );
-        let worker_thread = &self.thread_schedulers
-            .get(thread_index as usize)
-            .expect(&error_message[..]);
-
-        self.spawn_with_thread(coroutine_body, worker_thread)
-    }
 
     pub fn start(&self) -> Result<()> {
         let mut thread_pool =  try!(self.thread_pool.write());

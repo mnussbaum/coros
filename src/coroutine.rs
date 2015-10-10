@@ -1,44 +1,147 @@
 use std::borrow::Borrow;
 use std::boxed::FnBox;
 use std::mem;
+use std::thread;
 
-use libc;
 use context::{
     Context,
     Stack,
 };
 
 pub struct Coroutine {
-    pub context: Context,
+    context: Option<Context>,
+    pub function: Option<Box<FnBox(&mut CoroutineHandle) + Send + 'static>>,
+    pub state: CoroutineState,
 }
 
-extern "C" fn context_func(parent_context_ptr: usize, boxed_context_body: *mut libc::c_void) -> ! {
-    unsafe {
-        let context_body: Box<Box<FnBox()>> = Box::from_raw(boxed_context_body as *mut Box<FnBox()>);
-        context_body()
+#[derive(Debug)]
+pub enum CoroutineState {
+    New,
+    Runnable,
+    Sleeping,
+    Terminated,
+}
+
+pub struct CoroutineHandle<'a> {
+    pub coroutine: &'a mut Coroutine,
+    scheduler_context: &'a Context,
+}
+
+impl<'a> CoroutineHandle<'a> {
+    pub fn sleep_ms(&mut self, ms: u32) {
+        self.coroutine.state = CoroutineState::Sleeping;
+        match self.coroutine.context {
+            Some(ref context) => {
+                Context::swap(context, self.scheduler_context);
+                thread::sleep_ms(ms); // Dirty hack until we get a real timer
+            },
+            None => panic!("Coros internal error: cannot sleep coroutine without context"),
+        };
+    }
+}
+
+extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -> ! {
+    let coroutine: &mut Coroutine = unsafe { mem::transmute(coroutine_ptr) };
+    let function = coroutine
+        .function
+        .take()
+        .expect("Coros internal error: cannot run coroutine without function");
+    let scheduler_context: &Context = unsafe { mem::transmute(scheduler_context_ptr) };
+    let mut coroutine_handle = CoroutineHandle {
+        coroutine: coroutine,
+        scheduler_context: scheduler_context,
     };
 
-    let parent_context: &mut Context = unsafe { mem::transmute(parent_context_ptr) };
-    Context::load(parent_context);
+    function.call_box((&mut coroutine_handle,));
 
-    unreachable!("Coros internal error, execution should never reach here");
+    Context::load(&scheduler_context);
+
+    unreachable!("Coros internal error: execution should never reach here");
 }
 
 impl Coroutine {
-    pub fn new(coroutine_body: Box<FnOnce() + Send + 'static>, parent_context: &Context, stack: &mut Stack) -> Coroutine
+    pub fn new(
+        function: Box<FnBox(&mut CoroutineHandle) + Send + 'static>,
+        stack: Stack,
+    ) -> Coroutine
     {
-        let parent_context_ptr = {
-            &*parent_context.borrow() as *const Context
+        let mut coroutine = Coroutine {
+            context: None,
+            function: Some(function),
+            state: CoroutineState::New,
         };
         let context = Context::new(
-            context_func,
-            parent_context_ptr as usize,
-            Box::into_raw(Box::new(coroutine_body)) as *mut libc::c_void,
+            context_init,
+            0 as usize,
+            0 as usize,
             stack,
         );
+        coroutine.context = Some(context);
 
-        Coroutine {
-            context: context,
+        coroutine
+    }
+
+    pub fn raw_pointer(&self) -> *const Coroutine {
+        self.borrow() as *const Coroutine
+    }
+
+    pub fn run(&mut self, scheduler_context: &Context) {
+        self.point_context_at_coroutine();
+        self.point_context_at_scheduler_contex(scheduler_context);
+        self.state = CoroutineState::Runnable;
+
+        match self.context {
+            None => panic!("Coros internal error: trying to run coroutine without context"),
+            Some(ref context) => {
+                Context::swap(scheduler_context, context);
+            },
+        }
+    }
+
+    pub fn terminated(&self) -> bool {
+        match self.state {
+            CoroutineState::Terminated => true,
+            _ => false,
+        }
+    }
+
+    pub fn take_stack(&mut self) -> Stack {
+        match self.context {
+            None => panic!("Coros internal error: trying to take stack from coroutine without context"),
+            Some(ref mut context) => {
+                context
+                    .take_stack()
+                    .expect("Coros internal error: trying to run release stack from coroutine without one")
+            },
+        }
+    }
+
+    /// Moving ownership of a value can change it's memory address. The first
+    /// argument to the context_init, the pointer back to the calling coroutine,
+    /// needs to be updated before coroutine is run in case the coroutine has
+    /// been moved.
+    fn point_context_at_coroutine(&mut self) {
+        let raw_self_ptr = self.raw_pointer();
+
+        match self.context {
+            None => panic!("Coros internal error: trying to run coroutine without context"),
+            Some(ref mut context) => {
+                context
+                    .set_arg(raw_self_ptr as usize, 0)
+                    .expect("Coros internal error: trying to set arg on context without stack");
+            },
+        }
+    }
+
+    fn point_context_at_scheduler_contex(&mut self, scheduler_context: &Context) {
+        match self.context {
+            None => panic!("Coros internal error: trying to run coroutine without context"),
+            Some(ref mut context) => {
+                let scheduler_context_ptr = scheduler_context.borrow() as *const Context;
+                context
+                    .set_arg(scheduler_context_ptr as usize, 1)
+                    .expect("Coros internal error: trying to set arg on context without stack");
+            },
         }
     }
 }
