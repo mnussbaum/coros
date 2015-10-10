@@ -94,3 +94,22 @@ fn test_work_stealing() {
     assert!((now() - start_time) >= Duration::milliseconds(500));
     pool.stop().unwrap();
 }
+
+#[test]
+fn test_nested_coroutines() {
+    let outer_pool_name = "outer".to_string();
+    let outer_pool = Pool::new(outer_pool_name, 2);
+    let outer_guard = outer_pool.spawn(|| {
+            let inner_pool_name = "inner".to_string();
+            let inner_pool = Pool::new(inner_pool_name, 2);
+            inner_pool.start().unwrap();
+            let inner_guard = inner_pool.spawn(|| { 1 });
+            let inner_result = inner_guard.join().unwrap().unwrap();
+            inner_pool.stop().unwrap();
+            inner_result
+        });
+
+    outer_pool.start().unwrap();
+    assert_eq!(1, outer_guard.join().unwrap().unwrap());
+    outer_pool.stop().unwrap();
+}
