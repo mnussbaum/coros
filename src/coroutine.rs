@@ -1,18 +1,13 @@
 use std::borrow::Borrow;
 use std::boxed::FnBox;
 use std::mem;
-use std::thread;
 
 use context::{
     Context,
     Stack,
 };
 
-pub struct Coroutine {
-    context: Option<Context>,
-    pub function: Option<Box<FnBox(&mut CoroutineHandle) + Send + 'static>>,
-    pub state: CoroutineState,
-}
+use coroutine_handle::CoroutineHandle;
 
 #[derive(Debug)]
 pub enum CoroutineState {
@@ -20,24 +15,6 @@ pub enum CoroutineState {
     Runnable,
     Sleeping,
     Terminated,
-}
-
-pub struct CoroutineHandle<'a> {
-    pub coroutine: &'a mut Coroutine,
-    scheduler_context: &'a Context,
-}
-
-impl<'a> CoroutineHandle<'a> {
-    pub fn sleep_ms(&mut self, ms: u32) {
-        self.coroutine.state = CoroutineState::Sleeping;
-        match self.coroutine.context {
-            Some(ref context) => {
-                Context::swap(context, self.scheduler_context);
-                thread::sleep_ms(ms); // Dirty hack until we get a real timer
-            },
-            None => panic!("Coros internal error: cannot sleep coroutine without context"),
-        };
-    }
 }
 
 extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -> ! {
@@ -57,6 +34,13 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
     Context::load(&scheduler_context);
 
     unreachable!("Coros internal error: execution should never reach here");
+}
+
+
+pub struct Coroutine {
+    pub context: Option<Context>,
+    function: Option<Box<FnBox(&mut CoroutineHandle) + Send + 'static>>,
+    pub state: CoroutineState,
 }
 
 impl Coroutine {

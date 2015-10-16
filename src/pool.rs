@@ -17,9 +17,9 @@ use CoroutineJoinHandle;
 use Result;
 use coroutine::{
     Coroutine,
-    CoroutineHandle,
     CoroutineState,
 };
+use coroutine_handle::CoroutineHandle;
 use thread_scheduler::ThreadScheduler;
 
 pub struct Pool {
