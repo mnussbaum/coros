@@ -70,7 +70,12 @@ impl Pool {
         thread_schedulers
     }
 
-    pub fn spawn_with_thread_index<F, T>(&mut self, coroutine_body: F, thread_index: u32) -> CoroutineJoinHandle<T>
+    pub fn spawn_with_thread_index<F, T>(
+        &mut self,
+        coroutine_body: F,
+        stack_size: usize,
+        thread_index: u32
+    ) -> CoroutineJoinHandle<T>
         where F: FnOnce(&mut CoroutineHandle) -> T + Send + 'static,
               T: Send + 'static,
     {
@@ -95,7 +100,7 @@ impl Pool {
 
         let coroutine = Coroutine::new(
             coroutine_function,
-            worker_thread.take_stack(2 * 1024 * 1024),
+            worker_thread.take_stack(stack_size),
         );
 
         worker_thread.send(coroutine);
@@ -103,13 +108,14 @@ impl Pool {
         CoroutineJoinHandle::<T>::new(coroutine_result_receiver)
     }
 
-    pub fn spawn<F, T>(&mut self, coroutine_body: F) -> CoroutineJoinHandle<T>
+    pub fn spawn<F, T>(&mut self, coroutine_body: F, stack_size: usize) -> CoroutineJoinHandle<T>
         where F: FnOnce(&mut CoroutineHandle) -> T + Send + 'static,
               T: Send + 'static,
     {
         let thread_count = self.thread_count;
         self.spawn_with_thread_index(
             coroutine_body,
+            stack_size,
             thread_rng().gen_range(0, thread_count) as u32,
         )
     }
