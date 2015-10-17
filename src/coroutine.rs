@@ -89,17 +89,6 @@ impl Coroutine {
         }
     }
 
-    pub fn take_stack(&mut self) -> Stack {
-        match self.context {
-            None => panic!("Coros internal error: trying to take stack from coroutine without context"),
-            Some(ref mut context) => {
-                context
-                    .take_stack()
-                    .expect("Coros internal error: trying to run release stack from coroutine without one")
-            },
-        }
-    }
-
     /// Moving ownership of a value can change it's memory address. The first
     /// argument to the context_init, the pointer back to the calling coroutine,
     /// needs to be updated before coroutine is run in case the coroutine has

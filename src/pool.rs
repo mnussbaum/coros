@@ -1,7 +1,14 @@
 use std::fmt;
+use std::mem;
 use std::sync::RwLock;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{
+    channel,
+    Sender,
+};
 
+use context::stack::{
+    Stack,
+};
 use deque::{
     BufferPool,
     Stealer,
@@ -22,11 +29,19 @@ use coroutine::{
 use coroutine_handle::CoroutineHandle;
 use thread_scheduler::ThreadScheduler;
 
+struct ThreadSchedulerComponents {
+    shutdown_senders: Vec<Sender<()>>,
+    thread_schedulers: Vec<ThreadScheduler>,
+    work_senders: Vec<Sender<Coroutine>>,
+}
+
 pub struct Pool {
     pub name: String,
+    shutdown_senders: Vec<Sender<()>>,
     thread_count: u32,
     thread_pool: RwLock<ThreadPool>,
-    thread_schedulers: Vec<ThreadScheduler>,
+    thread_schedulers: Option<Vec<ThreadScheduler>>,
+    work_senders: Vec<Sender<Coroutine>>,
 }
 
 impl fmt::Display for Pool {
@@ -43,31 +58,50 @@ impl fmt::Debug for Pool {
 
 impl Pool {
     pub fn new(name: String, thread_count: u32) -> Pool {
-        let thread_schedulers = Pool::create_thread_schedulers(thread_count);
+        let thread_scheduler_components = Pool::create_thread_schedulers(thread_count);
         Pool {
             name: name,
+            shutdown_senders: thread_scheduler_components.shutdown_senders,
             thread_count: thread_count,
             thread_pool: RwLock::new(ThreadPool::new(thread_count)),
-            thread_schedulers: thread_schedulers,
+            thread_schedulers: Some(thread_scheduler_components.thread_schedulers),
+            work_senders: thread_scheduler_components.work_senders,
         }
     }
 
-    fn create_thread_schedulers(thread_count: u32) -> Vec<ThreadScheduler> {
+    fn create_thread_schedulers(thread_count: u32) -> ThreadSchedulerComponents {
         let thread_count: usize = thread_count as usize;
+        let mut thread_schedulers: Vec<ThreadScheduler> = Vec::with_capacity(thread_count);
         let mut work_stealers: Vec<Stealer<Coroutine>> = Vec::with_capacity(thread_count);
         let mut work_providers: Vec<Worker<Coroutine>> = Vec::with_capacity(thread_count);
+        let mut work_senders: Vec<Sender<Coroutine>> = Vec::with_capacity(thread_count);
+        let mut shutdown_senders: Vec<Sender<()>> = Vec::with_capacity(thread_count);
+
         for _ in (0..thread_count) {
             let (work_provider, work_stealer) = BufferPool::<Coroutine>::new().deque();
             work_providers.push(work_provider);
             work_stealers.push(work_stealer);
         }
-
-        let mut thread_schedulers: Vec<ThreadScheduler> = Vec::with_capacity(thread_count);
         for work_provider in work_providers.into_iter() {
-            thread_schedulers.push(ThreadScheduler::new(work_provider, work_stealers.clone()));
+            let (shutdown_sender, shutdown_receiver) = channel();
+            shutdown_senders.push(shutdown_sender);
+            let (work_sender, work_receiver) = channel();
+            work_senders.push(work_sender);
+
+            let thread_scheduler = ThreadScheduler::new(
+                shutdown_receiver,
+                work_provider,
+                work_receiver,
+                work_stealers.clone(),
+            );
+            thread_schedulers.push(thread_scheduler);
         }
 
-        thread_schedulers
+        ThreadSchedulerComponents {
+            shutdown_senders: shutdown_senders,
+            thread_schedulers: thread_schedulers,
+            work_senders: work_senders,
+        }
     }
 
     pub fn spawn_with_thread_index<F, T>(
@@ -84,8 +118,8 @@ impl Pool {
             thread_index,
             self.thread_count,
         );
-        let worker_thread = self.thread_schedulers
-            .get_mut(thread_index as usize)
+        let work_sender = self.work_senders
+            .get(thread_index as usize)
             .expect(&error_message[..]);
 
         let (coroutine_result_sender, coroutine_result_receiver) = channel();
@@ -100,10 +134,12 @@ impl Pool {
 
         let coroutine = Coroutine::new(
             coroutine_function,
-            worker_thread.take_stack(stack_size),
+            Stack::new(stack_size),
         );
 
-        worker_thread.send(coroutine);
+        work_sender
+            .send(coroutine)
+            .expect("Coros error: attempting to send work to closed channel");
 
         CoroutineJoinHandle::<T>::new(coroutine_result_receiver)
     }
@@ -121,10 +157,14 @@ impl Pool {
     }
 
 
-    pub fn start(&self) -> Result<()> {
+    pub fn start(&mut self) -> Result<()> {
         let mut thread_pool =  try!(self.thread_pool.write());
+        let mut thread_schedulers = self
+            .thread_schedulers
+            .take()
+            .expect("Coros internal error: trying to start pool without schedulers");
         thread_pool.scoped(|scoped| {
-            for thread_scheduler in self.thread_schedulers.iter() {
+            for mut thread_scheduler in thread_schedulers.drain(..) {
                 scoped.execute(move || { thread_scheduler.start(); () });
             }
         });
@@ -132,10 +172,16 @@ impl Pool {
         Ok(())
     }
 
-    pub fn stop(&self) -> Result<()> {
+    pub fn stop(&mut self) -> Result<()> {
         let thread_pool =  try!(self.thread_pool.write());
-        for thread_scheduler in self.thread_schedulers.iter() {
-            thread_scheduler.stop();
+        let mut shutdown_senders = mem::replace(
+            &mut self.shutdown_senders,
+            Vec::with_capacity(self.thread_count as usize),
+        );
+        for shutdown_sender in shutdown_senders.drain(..) {
+            shutdown_sender
+                .send(())
+                .expect("Coros internal error: error shutting down threads");
         }
         thread_pool.join_all();
         Ok(())

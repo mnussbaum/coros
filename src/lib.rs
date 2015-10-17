@@ -1,4 +1,4 @@
-#![feature(fnbox)]
+#![feature(drain, fnbox)]
 
 extern crate context;
 extern crate deque;

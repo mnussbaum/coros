@@ -1,15 +1,10 @@
-use std::sync::atomic::{
-    AtomicBool,
-    Ordering,
+use std::sync::mpsc::{
+    Receiver,
+    TryRecvError,
 };
-use std::sync::Mutex;
 use std::thread;
 
 use context::Context;
-use context::stack::{
-    StackPool,
-    Stack,
-};
 use deque::{
     Stealer,
     Stolen,
@@ -19,62 +14,50 @@ use deque::{
 use coroutine::Coroutine;
 
 pub struct ThreadScheduler {
-    keep_running: AtomicBool,
     scheduler_context: Context,
-    stack_pool: Mutex<StackPool>,
+    shutdown_receiver: Receiver<()>,
+    work_receiver: Receiver<Coroutine>,
     work_provider: Worker<Coroutine>,
     work_stealers: Vec<Stealer<Coroutine>>,
 }
 
 impl ThreadScheduler {
     pub fn new(
+        shutdown_receiver: Receiver<()>,
         work_provider: Worker<Coroutine>,
+        work_receiver: Receiver<Coroutine>,
         work_stealers: Vec<Stealer<Coroutine>>
     ) -> ThreadScheduler {
         ThreadScheduler {
-            keep_running: AtomicBool::new(true),
             scheduler_context: Context::empty(),
-            stack_pool: Mutex::new(StackPool::new()),
+            shutdown_receiver: shutdown_receiver,
             work_provider: work_provider,
+            work_receiver: work_receiver,
             work_stealers: work_stealers,
         }
     }
 
     fn run_coroutine(&self, coroutine: Coroutine) {
         let mut coroutine = coroutine;
-        match self.stack_pool.lock() {
-            Ok(mut stack_pool) => {
-                coroutine.run(&self.scheduler_context);
-                if coroutine.terminated() {
-                    stack_pool.give_stack(coroutine.take_stack());
-                } else {
-                    // Dirty hack until we get a real timer
-                    self.work_provider.push(coroutine);
-                }
-            },
-            Err(e) => panic!("Coros internal error: cannot get stack mutex: {}", e),
-        };
-    }
-
-    pub fn take_stack(&mut self, stack_size: usize) -> Stack {
-        match self.stack_pool.lock() {
-            Ok(mut stack_pool) => {
-                stack_pool.take_stack(stack_size)
-            },
-            Err(e) => panic!("Coros internal error: cannot get stack mutex: {}", e),
+        coroutine.run(&self.scheduler_context);
+        if !coroutine.terminated() {
+            // Dirty hack until we get a real timer
+            self.work_provider.push(coroutine);
         }
     }
 
-    pub fn start(&self) {
-        'eventloop:
-        while self.keep_running.load(Ordering::SeqCst) {
+    pub fn start(&mut self) {
+        'event_loop:
+        while self.shutdown_receiver.try_recv().is_err() {
+            self.move_received_work_onto_queue();
+
             match self.work_provider.pop() {
                 Some(coroutine) => self.run_coroutine(coroutine),
                 None => {
                     for work_stealer in self.work_stealers.iter() {
                         if let Stolen::Data(coroutine) = work_stealer.steal() {
                             self.run_coroutine(coroutine);
-                            continue 'eventloop;
+                            continue 'event_loop;
                         }
                     }
                     thread::sleep_ms(100);
@@ -83,11 +66,13 @@ impl ThreadScheduler {
         };
     }
 
-    pub fn stop(&self) {
-        self.keep_running.store(false, Ordering::SeqCst);
-    }
-
-    pub fn send(&self, work: Coroutine) {
-        self.work_provider.push(work);
+    pub fn move_received_work_onto_queue(&self) {
+        for _ in (0..1000) {
+            match self.work_receiver.try_recv() {
+                Ok(work) => self.work_provider.push(work),
+                Err(TryRecvError::Empty) => break,
+                Err(err) => panic!("Coros internal error: error receinving work {:?}", err),
+            };
+        }
     }
 }
