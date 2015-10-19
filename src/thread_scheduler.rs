@@ -2,6 +2,7 @@ use std::sync::mpsc::{
     Receiver,
     TryRecvError,
 };
+use std::sync::Mutex;
 use std::thread;
 
 use context::Context;
@@ -10,15 +11,37 @@ use deque::{
     Stolen,
     Worker,
 };
+use mio::util::Slab;
+use mio::{
+    EventLoop,
+    Token,
+};
+use mio::Handler as MioHandler;
 
 use coroutine::Coroutine;
 
 pub struct ThreadScheduler {
+    blocked_coroutines: Slab<Coroutine>,
+    mio_event_loop: EventLoop<ThreadScheduler>,
     scheduler_context: Context,
     shutdown_receiver: Receiver<()>,
     work_receiver: Receiver<Coroutine>,
     work_provider: Worker<Coroutine>,
-    work_stealers: Vec<Stealer<Coroutine>>,
+    work_stealers: Mutex<Vec<Stealer<Coroutine>>>,
+}
+
+impl MioHandler for ThreadScheduler {
+    type Timeout = Token;
+    type Message = ();
+
+    fn timeout(&mut self, _: &mut EventLoop<ThreadScheduler>, timeout_token: Token) {
+        let coroutine = self
+            .blocked_coroutines
+            .remove(timeout_token)
+            .expect("Coros internal error: Timeout expired for missing coroutine");
+
+        self.work_provider.push(coroutine);
+    }
 }
 
 impl ThreadScheduler {
@@ -26,23 +49,28 @@ impl ThreadScheduler {
         shutdown_receiver: Receiver<()>,
         work_provider: Worker<Coroutine>,
         work_receiver: Receiver<Coroutine>,
-        work_stealers: Vec<Stealer<Coroutine>>
+        work_stealers: Vec<Stealer<Coroutine>>,
     ) -> ThreadScheduler {
         ThreadScheduler {
+            blocked_coroutines: Slab::new(1024 * 64),
+            mio_event_loop: EventLoop::new().unwrap(),
             scheduler_context: Context::empty(),
             shutdown_receiver: shutdown_receiver,
             work_provider: work_provider,
             work_receiver: work_receiver,
-            work_stealers: work_stealers,
+            work_stealers: Mutex::new(work_stealers),
         }
     }
 
-    fn run_coroutine(&self, coroutine: Coroutine) {
+    fn run_coroutine(&mut self, coroutine: Coroutine) {
         let mut coroutine = coroutine;
         coroutine.run(&self.scheduler_context);
         if !coroutine.terminated() {
-            // Dirty hack until we get a real timer
-            self.work_provider.push(coroutine);
+            let mio_callback = coroutine
+                .mio_callback
+                .take()
+                .expect("Coros internal error: non-terminated state without callback");
+            mio_callback.call_box((coroutine, &mut self.mio_event_loop, &mut self.blocked_coroutines));
         }
     }
 
@@ -50,20 +78,38 @@ impl ThreadScheduler {
         'event_loop:
         while self.shutdown_receiver.try_recv().is_err() {
             self.move_received_work_onto_queue();
+            let raw_self_ptr: *mut ThreadScheduler = self;
+            self.mio_event_loop
+                .run_once(unsafe { &mut *raw_self_ptr })
+                .ok()
+                .expect("Coros internal error: error running mio event loop");
 
             match self.work_provider.pop() {
                 Some(coroutine) => self.run_coroutine(coroutine),
                 None => {
-                    for work_stealer in self.work_stealers.iter() {
-                        if let Stolen::Data(coroutine) = work_stealer.steal() {
-                            self.run_coroutine(coroutine);
-                            continue 'event_loop;
-                        }
+                    if let Some(coroutine) = self.stolen_work() {
+                        self.run_coroutine(coroutine);
+                    } else {
+                        thread::sleep_ms(100);
                     }
-                    thread::sleep_ms(100);
                 },
             }
         };
+    }
+
+    pub fn stolen_work(&mut self) -> Option<Coroutine> {
+        match self.work_stealers.lock() {
+            Ok(ref work_stealers) => {
+                for work_stealer in work_stealers.iter() {
+                    if let Stolen::Data(coroutine) = work_stealer.steal() {
+                        return Some(coroutine);
+                    }
+                }
+            },
+            Err(err) => panic!("Coros internal error: error getting work stealer lock: {}", err),
+        }
+
+        None
     }
 
     pub fn move_received_work_onto_queue(&self) {

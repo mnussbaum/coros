@@ -6,8 +6,11 @@ use context::{
     Context,
     Stack,
 };
+use mio::util::Slab;
+use mio::EventLoop;
 
 use coroutine_handle::CoroutineHandle;
+use thread_scheduler::ThreadScheduler;
 
 #[derive(Debug)]
 pub enum CoroutineState {
@@ -40,8 +43,11 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
 pub struct Coroutine {
     pub context: Option<Context>,
     function: Option<Box<FnBox(&mut CoroutineHandle) + Send + 'static>>,
+    pub mio_callback: Option<Box<FnBox(Coroutine, &mut EventLoop<ThreadScheduler>, &mut Slab<Coroutine>)>>,
     pub state: CoroutineState,
 }
+
+unsafe impl Send for Coroutine {}
 
 impl Coroutine {
     pub fn new(
@@ -52,6 +58,7 @@ impl Coroutine {
         let mut coroutine = Coroutine {
             context: None,
             function: Some(function),
+            mio_callback: None,
             state: CoroutineState::New,
         };
         let context = Context::new(
