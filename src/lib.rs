@@ -14,6 +14,12 @@ mod coroutine_join_handle;
 pub use coroutine_join_handle::CoroutineJoinHandle;
 mod error;
 pub use error::CoroError;
+mod notifying_channel;
+pub use notifying_channel::{
+    NotifyingReceiver,
+    NotifyingSender,
+    notifying_channel,
+};
 mod thread_scheduler;
 mod pool;
 pub use pool::Pool;

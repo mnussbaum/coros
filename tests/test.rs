@@ -12,6 +12,7 @@ use time::{
 
 use coros::Pool;
 use coros::CoroutineHandle;
+use coros::notifying_channel;
 
 const STACK_SIZE: usize = 2 * 1024 * 1024;
 
@@ -148,5 +149,23 @@ fn test_sleep_ms() {
     assert!((now() - start_time) < Duration::milliseconds(500));
     assert_eq!(2, guard2.join().unwrap());
     assert!((now() - start_time) >= Duration::milliseconds(500));
+    pool.stop().unwrap();
+}
+
+#[test]
+fn test_channel_recv() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1);
+    let (sender, receiver) = notifying_channel::<u8>();
+    let guard = pool.spawn(
+        move |coroutine_handle: &mut CoroutineHandle| {
+            coroutine_handle.recv(&receiver).unwrap()
+        },
+        STACK_SIZE,
+    );
+
+    pool.start().unwrap();
+    sender.send(1);
+    assert_eq!(1, guard.join().unwrap());
     pool.stop().unwrap();
 }

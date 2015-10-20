@@ -32,13 +32,22 @@ pub struct ThreadScheduler {
 
 impl MioHandler for ThreadScheduler {
     type Timeout = Token;
-    type Message = ();
+    type Message = Token;
+
+    fn notify(&mut self, _: &mut EventLoop<ThreadScheduler>, message_token: Token) {
+        let coroutine = self
+            .blocked_coroutines
+            .remove(message_token)
+            .expect("Coros internal error: received notification for missing coroutine");
+
+        self.work_provider.push(coroutine);
+    }
 
     fn timeout(&mut self, _: &mut EventLoop<ThreadScheduler>, timeout_token: Token) {
         let coroutine = self
             .blocked_coroutines
             .remove(timeout_token)
-            .expect("Coros internal error: Timeout expired for missing coroutine");
+            .expect("Coros internal error: timeout expired for missing coroutine");
 
         self.work_provider.push(coroutine);
     }
