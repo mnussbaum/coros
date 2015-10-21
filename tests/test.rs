@@ -1,10 +1,14 @@
 #![feature(catch_panic)]
+extern crate bytes;
+extern crate mio;
 extern crate time;
 
 extern crate coros;
 
 use std::thread;
 
+use bytes::SliceBuf;
+use mio::*;
 use time::{
     now,
     Duration
@@ -167,5 +171,30 @@ fn test_channel_recv() {
     pool.start().unwrap();
     sender.send(1);
     assert_eq!(1, guard.join().unwrap());
+    pool.stop().unwrap();
+}
+
+#[test]
+fn test_readable_io() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1);
+    let (mut reader, mut writer) = unix::pipe().unwrap();
+
+    let guard = pool.spawn(
+        move |coroutine_handle: &mut CoroutineHandle| {
+            coroutine_handle.register(&reader, EventSet::readable(), PollOpt::edge());
+            let mut result_buf = Vec::<u8>::new();
+            reader.try_read_buf(&mut result_buf).unwrap();
+
+            std::str::from_utf8(&result_buf).unwrap().to_string()
+        },
+        STACK_SIZE,
+    );
+
+    writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
+
+
+    pool.start().unwrap();
+    assert_eq!("ping", guard.join().unwrap());
     pool.stop().unwrap();
 }

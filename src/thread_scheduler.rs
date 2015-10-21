@@ -14,6 +14,7 @@ use deque::{
 use mio::util::Slab;
 use mio::{
     EventLoop,
+    EventSet,
     Token,
 };
 use mio::Handler as MioHandler;
@@ -34,22 +35,16 @@ impl MioHandler for ThreadScheduler {
     type Timeout = Token;
     type Message = Token;
 
-    fn notify(&mut self, _: &mut EventLoop<ThreadScheduler>, message_token: Token) {
-        let coroutine = self
-            .blocked_coroutines
-            .remove(message_token)
-            .expect("Coros internal error: received notification for missing coroutine");
-
-        self.work_provider.push(coroutine);
+    fn notify(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token) {
+        self.enqueue_coroutine(coroutine_token);
     }
 
-    fn timeout(&mut self, _: &mut EventLoop<ThreadScheduler>, timeout_token: Token) {
-        let coroutine = self
-            .blocked_coroutines
-            .remove(timeout_token)
-            .expect("Coros internal error: timeout expired for missing coroutine");
+     fn ready(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token, _: EventSet) {
+        self.enqueue_coroutine(coroutine_token);
+     }
 
-        self.work_provider.push(coroutine);
+    fn timeout(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token) {
+        self.enqueue_coroutine(coroutine_token);
     }
 }
 
@@ -129,5 +124,14 @@ impl ThreadScheduler {
                 Err(err) => panic!("Coros internal error: error receinving work {:?}", err),
             };
         }
+    }
+
+    fn enqueue_coroutine(&mut self, coroutine_token: Token) {
+        let coroutine = self
+            .blocked_coroutines
+            .remove(coroutine_token)
+            .expect("Coros internal error: timeout expired for missing coroutine");
+
+        self.work_provider.push(coroutine);
     }
 }
