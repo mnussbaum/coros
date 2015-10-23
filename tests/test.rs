@@ -228,7 +228,35 @@ fn test_writable_io() {
 
     let result = std::str::from_utf8(&result_buf).unwrap().to_string();
 
-
     assert_eq!("ping", result);
+    pool.stop().unwrap();
+}
+
+#[test]
+fn test_deregister() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1);
+    let (reader, mut writer) = unix::pipe().unwrap();
+
+    let guard = pool.spawn(
+        move |coroutine_handle: &mut CoroutineHandle| {
+            coroutine_handle.register(
+                &reader,
+                EventSet::readable(),
+                PollOpt::level(),
+            );
+            coroutine_handle.deregister(&reader);
+
+            let start_time = now();
+            assert!((now() - start_time) < Duration::milliseconds(500));
+            coroutine_handle.sleep_ms(500);
+            assert!((now() - start_time) >= Duration::milliseconds(500));
+        },
+        STACK_SIZE,
+    );
+
+    pool.start().unwrap();
+    writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
+    guard.join().unwrap();
     pool.stop().unwrap();
 }
