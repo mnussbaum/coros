@@ -122,4 +122,30 @@ impl<'a> CoroutineHandle<'a> {
             None => panic!("Coros internal error: cannot sleep coroutine without context"),
         };
     }
+
+    pub fn reregister<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt)
+        where E: Evented + 'static
+    {
+        let raw_io_ptr: *const E = io as *const E;
+        self.coroutine.state = CoroutineState::Sleeping; // TODO: add better states
+        self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
+            let token = blocked_coroutines
+                .insert(coroutine)
+                .ok()
+                .expect("Coros internal error: error inserting coroutine into slab");
+            mio_event_loop.reregister(
+                unsafe { &*raw_io_ptr },
+                token,
+                interest,
+                opt,
+            ).unwrap(); //TODO: error handling
+        }));
+
+        match self.coroutine.context {
+            Some(ref context) => {
+                Context::swap(context, self.scheduler_context);
+            },
+            None => panic!("Coros internal error: cannot sleep coroutine without context"),
+        };
+    }
 }

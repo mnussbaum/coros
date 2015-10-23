@@ -247,10 +247,49 @@ fn test_deregister() {
             );
             coroutine_handle.deregister(&reader);
 
+            // Due to implementation of blocking on IO and sleep, a thread
+            // can block itself on sleep, but then be awoken by a second IO ready
+            // notification due to the usage of level polling.
             let start_time = now();
-            assert!((now() - start_time) < Duration::milliseconds(500));
             coroutine_handle.sleep_ms(500);
             assert!((now() - start_time) >= Duration::milliseconds(500));
+        },
+        STACK_SIZE,
+    );
+
+    pool.start().unwrap();
+    writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
+    guard.join().unwrap();
+    pool.stop().unwrap();
+}
+
+#[test]
+fn test_reregister() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1);
+    let (reader, mut writer) = unix::pipe().unwrap();
+
+    let guard = pool.spawn(
+        move |coroutine_handle: &mut CoroutineHandle| {
+            coroutine_handle.register(
+                &reader,
+                EventSet::readable(),
+                PollOpt::level(),
+            );
+            coroutine_handle.deregister(&reader);
+            coroutine_handle.reregister(
+                &reader,
+                EventSet::readable(),
+                PollOpt::level(),
+            );
+
+            // Due to implementation of blocking on IO and sleep, a thread
+            // can block itself on sleep, but then be awoken by a second IO ready
+            // notification due to the usage of level polling.
+            let start_time = now();
+            coroutine_handle.sleep_ms(500);
+            assert!((now() - start_time) < Duration::milliseconds(500));
+            coroutine_handle.deregister(&reader);
         },
         STACK_SIZE,
     );
