@@ -39,9 +39,9 @@ impl MioHandler for ThreadScheduler {
         self.enqueue_coroutine(coroutine_token);
     }
 
-     fn ready(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token, _: EventSet) {
+    fn ready(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token, _: EventSet) {
         self.enqueue_coroutine(coroutine_token);
-     }
+    }
 
     fn timeout(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token) {
         self.enqueue_coroutine(coroutine_token);

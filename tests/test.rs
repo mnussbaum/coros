@@ -182,7 +182,11 @@ fn test_readable_io() {
 
     let guard = pool.spawn(
         move |coroutine_handle: &mut CoroutineHandle| {
-            coroutine_handle.register(&reader, EventSet::readable(), PollOpt::edge());
+            coroutine_handle.register(
+                &reader,
+                EventSet::readable(),
+                PollOpt::edge(),
+            );
             let mut result_buf = Vec::<u8>::new();
             reader.try_read_buf(&mut result_buf).unwrap();
 
@@ -196,5 +200,35 @@ fn test_readable_io() {
 
     pool.start().unwrap();
     assert_eq!("ping", guard.join().unwrap());
+    pool.stop().unwrap();
+}
+
+#[test]
+fn test_writable_io() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1);
+    let (mut reader, mut writer) = unix::pipe().unwrap();
+
+    let guard = pool.spawn(
+        move |coroutine_handle: &mut CoroutineHandle| {
+            coroutine_handle.register(
+                &writer,
+                EventSet::writable(),
+                PollOpt::edge(),
+            );
+            writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
+        },
+        STACK_SIZE,
+    );
+    pool.start().unwrap();
+    guard.join().unwrap();
+
+    let mut result_buf = Vec::<u8>::new();
+    reader.try_read_buf(&mut result_buf).unwrap();
+
+    let result = std::str::from_utf8(&result_buf).unwrap().to_string();
+
+
+    assert_eq!("ping", result);
     pool.stop().unwrap();
 }
