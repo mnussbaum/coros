@@ -15,8 +15,8 @@ use thread_scheduler::ThreadScheduler;
 #[derive(Debug)]
 pub enum CoroutineState {
     New,
-    Runnable,
-    Sleeping,
+    Running,
+    Blocked,
     Terminated,
 }
 
@@ -79,7 +79,7 @@ impl Coroutine {
     pub fn run(&mut self, scheduler_context: &Context) {
         self.point_context_at_coroutine();
         self.point_context_at_scheduler_contex(scheduler_context);
-        self.state = CoroutineState::Runnable;
+        self.state = CoroutineState::Running;
 
         match self.context {
             None => panic!("Coros internal error: trying to run coroutine without context"),

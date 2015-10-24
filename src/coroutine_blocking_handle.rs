@@ -27,7 +27,7 @@ pub struct CoroutineBlockingHandle<'a> {
 
 impl<'a> CoroutineBlockingHandle<'a> {
     pub fn sleep_ms(&mut self, ms: u64) {
-        self.coroutine.state = CoroutineState::Sleeping;
+        self.coroutine.state = CoroutineState::Blocked;
         self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
             let token = blocked_coroutines
                 .insert(coroutine)
@@ -49,7 +49,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
     pub fn recv<M: Send>(&mut self, receiver: &CoroutineReceiver<M>) -> Result<M, RecvError> {
         let blocked_message_sender = receiver.blocked_message_sender.clone();
-        self.coroutine.state = CoroutineState::Sleeping; // TODO: add better states
+        self.coroutine.state = CoroutineState::Blocked;
         self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
             let token = blocked_coroutines
                 .insert(coroutine)
@@ -67,7 +67,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
             Some(ref context) => {
                 Context::swap(context, self.scheduler_context);
             },
-            None => panic!("Coros internal error: cannot sleep coroutine without context"),
+            None => panic!("Coros internal error: cannot recv in coroutine without context"),
         };
 
         receiver.recv()
@@ -77,7 +77,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
         where E: Evented + 'static
     {
         let raw_io_ptr: *const E = io as *const E;
-        self.coroutine.state = CoroutineState::Sleeping; // TODO: add better states
+        self.coroutine.state = CoroutineState::Blocked;
         self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
             let token = blocked_coroutines
                 .insert(coroutine)
@@ -95,7 +95,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
             Some(ref context) => {
                 Context::swap(context, self.scheduler_context);
             },
-            None => panic!("Coros internal error: cannot sleep coroutine without context"),
+            None => panic!("Coros internal error: cannot register IO in coroutine without context"),
         };
     }
 
@@ -103,7 +103,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
         where E: Evented + 'static
     {
         let raw_io_ptr: *const E = io as *const E;
-        self.coroutine.state = CoroutineState::Sleeping; // TODO: add better states
+        self.coroutine.state = CoroutineState::Blocked;
         self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
             let token = blocked_coroutines
                 .insert(coroutine)
@@ -119,7 +119,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
             Some(ref context) => {
                 Context::swap(context, self.scheduler_context);
             },
-            None => panic!("Coros internal error: cannot sleep coroutine without context"),
+            None => panic!("Coros internal error: cannot deregister IO in coroutine without context"),
         };
     }
 
@@ -127,7 +127,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
         where E: Evented + 'static
     {
         let raw_io_ptr: *const E = io as *const E;
-        self.coroutine.state = CoroutineState::Sleeping; // TODO: add better states
+        self.coroutine.state = CoroutineState::Blocked;
         self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
             let token = blocked_coroutines
                 .insert(coroutine)
@@ -145,7 +145,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
             Some(ref context) => {
                 Context::swap(context, self.scheduler_context);
             },
-            None => panic!("Coros internal error: cannot sleep coroutine without context"),
+            None => panic!("Coros internal error: cannot reregister IO in coroutine without context"),
         };
     }
 }
