@@ -13,12 +13,12 @@ pub struct BlockedMessage {
     pub token: Token,
 }
 
-pub struct NotifyingSender<M: Send> {
+pub struct CoroutineSender<M: Send> {
     blocked_message_receiver: Receiver<BlockedMessage>,
     user_message_sender: Sender<M>,
 }
 
-impl<M: Send> NotifyingSender<M> {
+impl<M: Send> CoroutineSender<M> {
     // Is there a way to implement this without blocking while allowing messages to send before
     // notify_sender_of_blocking is called?
     pub fn send(&self, message: M) {
@@ -35,12 +35,12 @@ impl<M: Send> NotifyingSender<M> {
     }
 }
 
-pub struct NotifyingReceiver<M: Send> {
+pub struct CoroutineReceiver<M: Send> {
     pub blocked_message_sender: Sender<BlockedMessage>,
     user_message_receiver: Receiver<M>,
 }
 
-impl<M: Send> NotifyingReceiver<M> {
+impl<M: Send> CoroutineReceiver<M> {
     pub fn notify_sender_of_blocking(&self, mio_sender: MioSender<Token>, token: Token) {
         let message = BlockedMessage {
             mio_sender: mio_sender,
@@ -57,14 +57,14 @@ impl<M: Send> NotifyingReceiver<M> {
     }
 }
 
-pub fn notifying_channel<M: Send>() -> (NotifyingSender<M>, NotifyingReceiver<M>) {
+pub fn coroutine_channel<M: Send>() -> (CoroutineSender<M>, CoroutineReceiver<M>) {
     let (blocked_message_sender, blocked_message_receiver) = channel::<BlockedMessage>();
     let (user_message_sender, user_message_receiver) = channel::<M>();
-    let sender = NotifyingSender::<M> {
+    let sender = CoroutineSender::<M> {
       blocked_message_receiver: blocked_message_receiver,
       user_message_sender: user_message_sender,
     };
-    let receiver = NotifyingReceiver::<M> {
+    let receiver = CoroutineReceiver::<M> {
       blocked_message_sender: blocked_message_sender,
       user_message_receiver: user_message_receiver,
     };

@@ -14,9 +14,9 @@ use coroutine::{
     Coroutine,
     CoroutineState,
 };
-use notifying_channel::{
+use coroutine_channel::{
     BlockedMessage,
-    NotifyingReceiver,
+    CoroutineReceiver,
 };
 use thread_scheduler::ThreadScheduler;
 
@@ -47,7 +47,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
         };
     }
 
-    pub fn recv<M: Send>(&mut self, receiver: &NotifyingReceiver<M>) -> Result<M, RecvError> {
+    pub fn recv<M: Send>(&mut self, receiver: &CoroutineReceiver<M>) -> Result<M, RecvError> {
         let blocked_message_sender = receiver.blocked_message_sender.clone();
         self.coroutine.state = CoroutineState::Sleeping; // TODO: add better states
         self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
