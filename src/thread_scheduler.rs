@@ -3,7 +3,6 @@ use std::sync::mpsc::{
     TryRecvError,
 };
 use std::sync::Mutex;
-use std::thread;
 
 use context::Context;
 use deque::{
@@ -93,8 +92,6 @@ impl ThreadScheduler {
                 None => {
                     if let Some(coroutine) = self.stolen_work() {
                         self.run_coroutine(coroutine);
-                    } else {
-                        thread::sleep_ms(100);
                     }
                 },
             }
