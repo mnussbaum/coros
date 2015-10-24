@@ -28,7 +28,10 @@ pub struct CoroutineBlockingHandle<'a> {
 impl<'a> CoroutineBlockingHandle<'a> {
     pub fn sleep_ms(&mut self, ms: u64) {
         self.coroutine.state = CoroutineState::Blocked;
-        self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
+
+        let mio_callback = move |coroutine: Coroutine,
+                                 mio_event_loop: &mut EventLoop<ThreadScheduler>,
+                                 blocked_coroutines: &mut Slab<Coroutine>| {
             let token = blocked_coroutines
                 .insert(coroutine)
                 .ok()
@@ -37,7 +40,9 @@ impl<'a> CoroutineBlockingHandle<'a> {
             mio_event_loop
                 .timeout_ms(token, ms)
                 .expect("Coros internal error: ran out of slab");
-        }));
+        };
+
+        self.coroutine.mio_callback = Some(Box::new(mio_callback));
 
         match self.coroutine.context {
             Some(ref context) => {
@@ -50,7 +55,10 @@ impl<'a> CoroutineBlockingHandle<'a> {
     pub fn recv<M: Send>(&mut self, receiver: &CoroutineReceiver<M>) -> Result<M, RecvError> {
         let blocked_message_sender = receiver.blocked_message_sender.clone();
         self.coroutine.state = CoroutineState::Blocked;
-        self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
+
+        let mio_callback = move |coroutine: Coroutine,
+                                 mio_event_loop: &mut EventLoop<ThreadScheduler>,
+                                 blocked_coroutines: &mut Slab<Coroutine>| {
             let token = blocked_coroutines
                 .insert(coroutine)
                 .ok()
@@ -61,7 +69,9 @@ impl<'a> CoroutineBlockingHandle<'a> {
                 token: token,
             };
             blocked_message_sender.send(message).unwrap(); //TODO: handle errors, encapsulate
-        }));
+        };
+
+        self.coroutine.mio_callback = Some(Box::new(mio_callback));
 
         match self.coroutine.context {
             Some(ref context) => {
@@ -76,9 +86,12 @@ impl<'a> CoroutineBlockingHandle<'a> {
     pub fn register<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt)
         where E: Evented + 'static
     {
-        let raw_io_ptr: *const E = io as *const E;
         self.coroutine.state = CoroutineState::Blocked;
-        self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
+
+        let raw_io_ptr: *const E = io as *const E;
+        let mio_callback = move |coroutine: Coroutine,
+                                 mio_event_loop: &mut EventLoop<ThreadScheduler>,
+                                 blocked_coroutines: &mut Slab<Coroutine>| {
             let token = blocked_coroutines
                 .insert(coroutine)
                 .ok()
@@ -89,7 +102,9 @@ impl<'a> CoroutineBlockingHandle<'a> {
                 interest,
                 opt,
             ).unwrap(); //TODO: error handling
-        }));
+        };
+
+        self.coroutine.mio_callback = Some(Box::new(mio_callback));
 
         match self.coroutine.context {
             Some(ref context) => {
@@ -102,9 +117,12 @@ impl<'a> CoroutineBlockingHandle<'a> {
     pub fn deregister<E: ?Sized>(&mut self, io: &E)
         where E: Evented + 'static
     {
-        let raw_io_ptr: *const E = io as *const E;
         self.coroutine.state = CoroutineState::Blocked;
-        self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
+
+        let raw_io_ptr: *const E = io as *const E;
+        let mio_callback = move |coroutine: Coroutine,
+                                 mio_event_loop: &mut EventLoop<ThreadScheduler>,
+                                 blocked_coroutines: &mut Slab<Coroutine>| {
             let token = blocked_coroutines
                 .insert(coroutine)
                 .ok()
@@ -113,7 +131,9 @@ impl<'a> CoroutineBlockingHandle<'a> {
             mio_event_loop
                 .timeout_ms(token, 0)
                 .expect("Coros internal error: ran out of slab");
-        }));
+        };
+
+        self.coroutine.mio_callback = Some(Box::new(mio_callback));
 
         match self.coroutine.context {
             Some(ref context) => {
@@ -126,9 +146,12 @@ impl<'a> CoroutineBlockingHandle<'a> {
     pub fn reregister<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt)
         where E: Evented + 'static
     {
-        let raw_io_ptr: *const E = io as *const E;
         self.coroutine.state = CoroutineState::Blocked;
-        self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {
+
+        let raw_io_ptr: *const E = io as *const E;
+        let mio_callback = move |coroutine: Coroutine,
+                                 mio_event_loop: &mut EventLoop<ThreadScheduler>,
+                                 blocked_coroutines: &mut Slab<Coroutine>| {
             let token = blocked_coroutines
                 .insert(coroutine)
                 .ok()
@@ -139,7 +162,9 @@ impl<'a> CoroutineBlockingHandle<'a> {
                 interest,
                 opt,
             ).unwrap(); //TODO: error handling
-        }));
+        };
+
+        self.coroutine.mio_callback = Some(Box::new(mio_callback));
 
         match self.coroutine.context {
             Some(ref context) => {
