@@ -20,12 +20,12 @@ use notifying_channel::{
 };
 use thread_scheduler::ThreadScheduler;
 
-pub struct CoroutineHandle<'a> {
+pub struct CoroutineBlockingHandle<'a> {
     pub coroutine: &'a mut Coroutine,
     pub scheduler_context: &'a Context,
 }
 
-impl<'a> CoroutineHandle<'a> {
+impl<'a> CoroutineBlockingHandle<'a> {
     pub fn sleep_ms(&mut self, ms: u64) {
         self.coroutine.state = CoroutineState::Sleeping;
         self.coroutine.mio_callback = Some(Box::new(move |coroutine: Coroutine, mio_event_loop: &mut EventLoop<ThreadScheduler>, blocked_coroutines: &mut Slab<Coroutine>| {

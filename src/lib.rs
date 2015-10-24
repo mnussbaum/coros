@@ -8,8 +8,8 @@ extern crate rand;
 extern crate scoped_threadpool;
 
 mod coroutine;
-mod coroutine_handle;
-pub use coroutine_handle::CoroutineHandle;
+mod coroutine_blocking_handle;
+pub use coroutine_blocking_handle::CoroutineBlockingHandle;
 mod coroutine_join_handle;
 pub use coroutine_join_handle::CoroutineJoinHandle;
 mod error;

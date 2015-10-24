@@ -15,7 +15,7 @@ use time::{
 };
 
 use coros::Pool;
-use coros::CoroutineHandle;
+use coros::CoroutineBlockingHandle;
 use coros::notifying_channel;
 
 const STACK_SIZE: usize = 2 * 1024 * 1024;
@@ -139,7 +139,7 @@ fn test_sleep_ms() {
     let mut pool = Pool::new(pool_name, 2);
     let guard1 = pool.spawn_with_thread_index(|_| { 1 }, STACK_SIZE, 0);
     let guard2 = pool.spawn_with_thread_index(
-        |coroutine_handle: &mut CoroutineHandle| {
+        |coroutine_handle: &mut CoroutineBlockingHandle| {
             coroutine_handle.sleep_ms(500);
             2
         },
@@ -162,7 +162,7 @@ fn test_channel_recv() {
     let mut pool = Pool::new(pool_name, 1);
     let (sender, receiver) = notifying_channel::<u8>();
     let guard = pool.spawn(
-        move |coroutine_handle: &mut CoroutineHandle| {
+        move |coroutine_handle: &mut CoroutineBlockingHandle| {
             coroutine_handle.recv(&receiver).unwrap()
         },
         STACK_SIZE,
@@ -181,7 +181,7 @@ fn test_readable_io() {
     let (mut reader, mut writer) = unix::pipe().unwrap();
 
     let guard = pool.spawn(
-        move |coroutine_handle: &mut CoroutineHandle| {
+        move |coroutine_handle: &mut CoroutineBlockingHandle| {
             coroutine_handle.register(
                 &reader,
                 EventSet::readable(),
@@ -210,7 +210,7 @@ fn test_writable_io() {
     let (mut reader, mut writer) = unix::pipe().unwrap();
 
     let guard = pool.spawn(
-        move |coroutine_handle: &mut CoroutineHandle| {
+        move |coroutine_handle: &mut CoroutineBlockingHandle| {
             coroutine_handle.register(
                 &writer,
                 EventSet::writable(),
@@ -239,7 +239,7 @@ fn test_deregister() {
     let (reader, mut writer) = unix::pipe().unwrap();
 
     let guard = pool.spawn(
-        move |coroutine_handle: &mut CoroutineHandle| {
+        move |coroutine_handle: &mut CoroutineBlockingHandle| {
             coroutine_handle.register(
                 &reader,
                 EventSet::readable(),
@@ -270,7 +270,7 @@ fn test_reregister() {
     let (reader, mut writer) = unix::pipe().unwrap();
 
     let guard = pool.spawn(
-        move |coroutine_handle: &mut CoroutineHandle| {
+        move |coroutine_handle: &mut CoroutineBlockingHandle| {
             coroutine_handle.register(
                 &reader,
                 EventSet::readable(),

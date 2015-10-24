@@ -9,7 +9,7 @@ use context::{
 use mio::util::Slab;
 use mio::EventLoop;
 
-use coroutine_handle::CoroutineHandle;
+use coroutine_blocking_handle::CoroutineBlockingHandle;
 use thread_scheduler::ThreadScheduler;
 
 #[derive(Debug)]
@@ -27,12 +27,12 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
         .take()
         .expect("Coros internal error: cannot run coroutine without function");
     let scheduler_context: &Context = unsafe { mem::transmute(scheduler_context_ptr) };
-    let mut coroutine_handle = CoroutineHandle {
+    let mut coroutine_blocking_handle = CoroutineBlockingHandle {
         coroutine: coroutine,
         scheduler_context: scheduler_context,
     };
 
-    function.call_box((&mut coroutine_handle,));
+    function.call_box((&mut coroutine_blocking_handle,));
 
     Context::load(&scheduler_context);
 
@@ -42,7 +42,7 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
 
 pub struct Coroutine {
     pub context: Option<Context>,
-    function: Option<Box<FnBox(&mut CoroutineHandle) + Send + 'static>>,
+    function: Option<Box<FnBox(&mut CoroutineBlockingHandle) + Send + 'static>>,
     pub mio_callback: Option<Box<FnBox(Coroutine, &mut EventLoop<ThreadScheduler>, &mut Slab<Coroutine>)>>,
     pub state: CoroutineState,
 }
@@ -51,7 +51,7 @@ unsafe impl Send for Coroutine {}
 
 impl Coroutine {
     pub fn new(
-        function: Box<FnBox(&mut CoroutineHandle) + Send + 'static>,
+        function: Box<FnBox(&mut CoroutineBlockingHandle) + Send + 'static>,
         stack: Stack,
     ) -> Coroutine
     {

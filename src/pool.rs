@@ -26,7 +26,7 @@ use coroutine::{
     Coroutine,
     CoroutineState,
 };
-use coroutine_handle::CoroutineHandle;
+use coroutine_blocking_handle::CoroutineBlockingHandle;
 use thread_scheduler::ThreadScheduler;
 
 struct ThreadSchedulerComponents {
@@ -110,7 +110,7 @@ impl Pool {
         stack_size: usize,
         thread_index: u32
     ) -> CoroutineJoinHandle<T>
-        where F: FnOnce(&mut CoroutineHandle) -> T + Send + 'static,
+        where F: FnOnce(&mut CoroutineBlockingHandle) -> T + Send + 'static,
               T: Send + 'static,
     {
         let error_message = format!(
@@ -123,7 +123,7 @@ impl Pool {
             .expect(&error_message[..]);
 
         let (coroutine_result_sender, coroutine_result_receiver) = channel();
-        let coroutine_function = Box::new(move |coroutine_handle: &mut CoroutineHandle| {
+        let coroutine_function = Box::new(move |coroutine_handle: &mut CoroutineBlockingHandle| {
             let maybe_coroutine_result = coroutine_body(coroutine_handle);
 
             coroutine_handle.coroutine.state = CoroutineState::Terminated;
@@ -145,7 +145,7 @@ impl Pool {
     }
 
     pub fn spawn<F, T>(&mut self, coroutine_body: F, stack_size: usize) -> CoroutineJoinHandle<T>
-        where F: FnOnce(&mut CoroutineHandle) -> T + Send + 'static,
+        where F: FnOnce(&mut CoroutineBlockingHandle) -> T + Send + 'static,
               T: Send + 'static,
     {
         let thread_count = self.thread_count;
