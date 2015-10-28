@@ -1,6 +1,8 @@
-use std::sync::mpsc::RecvError;
+use std::sync::mpsc::{
+    channel,
+    RecvError,
+};
 
-use mio::util::Slab;
 use mio::{
     EventLoop,
     EventSet,
@@ -19,7 +21,10 @@ use coroutine_channel::{
     BlockedMessage,
     CoroutineReceiver,
 };
-use thread_scheduler::ThreadScheduler;
+use thread_scheduler::{
+    BlockedCoroutineSlab,
+    ThreadScheduler,
+};
 
 pub struct CoroutineBlockingHandle<'a> {
     pub coroutine: &'a mut Coroutine,
@@ -32,9 +37,9 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
-                                 blocked_coroutines: &mut Slab<Coroutine>| {
+                                 blocked_coroutines: &mut BlockedCoroutineSlab| {
             let token = blocked_coroutines
-                .insert(coroutine)
+                .insert((coroutine, None))
                 .ok()
                 .expect("Coros internal error: error inserting coroutine into slab");
 
@@ -52,9 +57,9 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
-                                 blocked_coroutines: &mut Slab<Coroutine>| {
+                                 blocked_coroutines: &mut BlockedCoroutineSlab| {
             let token = blocked_coroutines
-                .insert(coroutine)
+                .insert((coroutine, None))
                 .ok()
                 .expect("Coros internal error: error inserting coroutine into slab");
             let mio_sender = mio_event_loop.channel();
@@ -70,17 +75,18 @@ impl<'a> CoroutineBlockingHandle<'a> {
         receiver.recv()
     }
 
-    pub fn register<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt)
+    pub fn register<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt) -> EventSet
         where E: Evented + 'static
     {
         self.coroutine.state = CoroutineState::Blocked;
-
+        let (awoken_for_eventset_tx, awoken_for_eventset_rx) = channel::<EventSet>();
         let raw_io_ptr: *const E = io as *const E;
+
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
-                                 blocked_coroutines: &mut Slab<Coroutine>| {
+                                 blocked_coroutines: &mut BlockedCoroutineSlab| {
             let token = blocked_coroutines
-                .insert(coroutine)
+                .insert((coroutine, Some(awoken_for_eventset_tx)))
                 .ok()
                 .expect("Coros internal error: error inserting coroutine into slab");
             mio_event_loop.register(
@@ -92,19 +98,23 @@ impl<'a> CoroutineBlockingHandle<'a> {
         };
 
         self.suspend_with_callback(Box::new(mio_callback));
+
+        awoken_for_eventset_rx
+            .try_recv()
+            .expect("Coros internal: awoke from IO without eventset")
     }
 
     pub fn deregister<E: ?Sized>(&mut self, io: &E)
         where E: Evented + 'static
     {
         self.coroutine.state = CoroutineState::Blocked;
-
         let raw_io_ptr: *const E = io as *const E;
+
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
-                                 blocked_coroutines: &mut Slab<Coroutine>| {
+                                 blocked_coroutines: &mut BlockedCoroutineSlab| {
             let token = blocked_coroutines
-                .insert(coroutine)
+                .insert((coroutine, None))
                 .ok()
                 .expect("Coros internal error: error inserting coroutine into slab");
             mio_event_loop.deregister(unsafe { &*raw_io_ptr }).unwrap(); //TODO: error handling
@@ -116,17 +126,18 @@ impl<'a> CoroutineBlockingHandle<'a> {
         self.suspend_with_callback(Box::new(mio_callback));
     }
 
-    pub fn reregister<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt)
+    pub fn reregister<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt) -> EventSet
         where E: Evented + 'static
     {
         self.coroutine.state = CoroutineState::Blocked;
-
+        let (awoken_for_eventset_tx, awoken_for_eventset_rx) = channel::<EventSet>();
         let raw_io_ptr: *const E = io as *const E;
+
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
-                                 blocked_coroutines: &mut Slab<Coroutine>| {
+                                 blocked_coroutines: &mut BlockedCoroutineSlab| {
             let token = blocked_coroutines
-                .insert(coroutine)
+                .insert((coroutine, Some(awoken_for_eventset_tx)))
                 .ok()
                 .expect("Coros internal error: error inserting coroutine into slab");
             mio_event_loop.reregister(
@@ -138,6 +149,10 @@ impl<'a> CoroutineBlockingHandle<'a> {
         };
 
         self.suspend_with_callback(Box::new(mio_callback));
+
+        awoken_for_eventset_rx
+            .try_recv()
+            .expect("Coros internal: awoke from IO without eventset")
     }
 
     fn suspend_with_callback(&mut self, event_loop_registration: EventLoopRegistrationCallback) {

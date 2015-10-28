@@ -6,11 +6,13 @@ use context::{
     Context,
     Stack,
 };
-use mio::util::Slab;
 use mio::EventLoop;
 
 use coroutine_blocking_handle::CoroutineBlockingHandle;
-use thread_scheduler::ThreadScheduler;
+use thread_scheduler::{
+    BlockedCoroutineSlab,
+    ThreadScheduler,
+};
 
 #[derive(Debug)]
 pub enum CoroutineState {
@@ -39,7 +41,7 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
     unreachable!("Coros internal error: execution should never reach here");
 }
 
-pub type EventLoopRegistrationCallback = Box<FnBox(Coroutine, &mut EventLoop<ThreadScheduler>, &mut Slab<Coroutine>)>;
+pub type EventLoopRegistrationCallback = Box<FnBox(Coroutine, &mut EventLoop<ThreadScheduler>, &mut BlockedCoroutineSlab)>;
 
 pub struct Coroutine {
     pub context: Option<Context>,

@@ -10,8 +10,8 @@ use std::thread;
 use bytes::SliceBuf;
 use mio::*;
 use time::{
+    Duration,
     now,
-    Duration
 };
 
 use coros::Pool;
@@ -204,6 +204,37 @@ fn test_readable_io() {
 }
 
 #[test]
+fn test_eventset_of_result_is_returned_by_register() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1);
+    let (mut reader, mut writer) = unix::pipe().unwrap();
+
+    let guard = pool.spawn(
+        move |coroutine_handle: &mut CoroutineBlockingHandle| {
+            let result_eventset = coroutine_handle.register(
+                &reader,
+                EventSet::readable(),
+                PollOpt::edge(),
+            );
+            assert_eq!(result_eventset, EventSet::readable());
+
+            let mut result_buf = Vec::<u8>::new();
+            reader.try_read_buf(&mut result_buf).unwrap();
+
+            std::str::from_utf8(&result_buf).unwrap().to_string()
+        },
+        STACK_SIZE,
+    );
+
+    writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
+
+
+    pool.start().unwrap();
+    assert_eq!("ping", guard.join().unwrap());
+    pool.stop().unwrap();
+}
+
+#[test]
 fn test_writable_io() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 1);
@@ -211,11 +242,13 @@ fn test_writable_io() {
 
     let guard = pool.spawn(
         move |coroutine_handle: &mut CoroutineBlockingHandle| {
-            coroutine_handle.register(
+            let result_eventset = coroutine_handle.register(
                 &writer,
                 EventSet::writable(),
                 PollOpt::edge(),
             );
+            assert_eq!(result_eventset, EventSet::writable());
+
             writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
         },
         STACK_SIZE,
@@ -249,10 +282,10 @@ fn test_deregister() {
 
             // Due to implementation of blocking on IO and sleep, a thread
             // can block itself on sleep, but then be awoken by a second IO ready
-            // notification due to the usage of level polling.
-            let start_time = now();
+            // notification due to the usage of level polling, it will then panic
+            // since it will have IO results to deal with. Deregister ensures we don't hit this
+            // case.
             coroutine_handle.sleep_ms(500);
-            assert!((now() - start_time) >= Duration::milliseconds(500));
         },
         STACK_SIZE,
     );
@@ -267,7 +300,7 @@ fn test_deregister() {
 fn test_reregister() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 1);
-    let (reader, mut writer) = unix::pipe().unwrap();
+    let (mut reader, mut writer) = unix::pipe().unwrap();
 
     let guard = pool.spawn(
         move |coroutine_handle: &mut CoroutineBlockingHandle| {
@@ -277,25 +310,26 @@ fn test_reregister() {
                 PollOpt::level(),
             );
             coroutine_handle.deregister(&reader);
-            coroutine_handle.reregister(
+            let result_eventset = coroutine_handle.reregister(
                 &reader,
                 EventSet::readable(),
                 PollOpt::level(),
             );
+            assert_eq!(result_eventset, EventSet::readable());
 
-            // Due to implementation of blocking on IO and sleep, a thread
-            // can block itself on sleep, but then be awoken by a second IO ready
-            // notification due to the usage of level polling.
-            let start_time = now();
-            coroutine_handle.sleep_ms(500);
-            assert!((now() - start_time) < Duration::milliseconds(500));
+            let mut result_buf = Vec::<u8>::new();
+            reader.try_read_buf(&mut result_buf).unwrap();
+
+            let read = std::str::from_utf8(&result_buf).unwrap().to_string();
             coroutine_handle.deregister(&reader);
+
+            read
         },
         STACK_SIZE,
     );
 
     pool.start().unwrap();
     writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
-    guard.join().unwrap();
+    assert_eq!(guard.join().unwrap(), "ping");
     pool.stop().unwrap();
 }

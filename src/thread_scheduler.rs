@@ -1,5 +1,6 @@
 use std::sync::mpsc::{
     Receiver,
+    Sender,
     TryRecvError,
 };
 use std::sync::Mutex;
@@ -20,8 +21,10 @@ use mio::Handler as MioHandler;
 
 use coroutine::Coroutine;
 
+pub type BlockedCoroutineSlab = Slab<(Coroutine, Option<Sender<EventSet>>)>;
+
 pub struct ThreadScheduler {
-    blocked_coroutines: Slab<Coroutine>,
+    blocked_coroutines: BlockedCoroutineSlab,
     mio_event_loop: EventLoop<ThreadScheduler>,
     scheduler_context: Context,
     shutdown_receiver: Receiver<()>,
@@ -35,15 +38,15 @@ impl MioHandler for ThreadScheduler {
     type Message = Token;
 
     fn notify(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token) {
-        self.enqueue_coroutine(coroutine_token);
+        self.enqueue_coroutine(coroutine_token, None);
     }
 
-    fn ready(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token, _: EventSet) {
-        self.enqueue_coroutine(coroutine_token);
+    fn ready(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token, eventset: EventSet) {
+        self.enqueue_coroutine(coroutine_token, Some(eventset));
     }
 
     fn timeout(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token) {
-        self.enqueue_coroutine(coroutine_token);
+        self.enqueue_coroutine(coroutine_token, None);
     }
 }
 
@@ -123,11 +126,20 @@ impl ThreadScheduler {
         }
     }
 
-    fn enqueue_coroutine(&mut self, coroutine_token: Token) {
-        let coroutine = self
+    fn enqueue_coroutine(&mut self, coroutine_token: Token, maybe_eventset: Option<EventSet>) {
+        let (coroutine, maybe_awoken_for_eventset_rx) = self
             .blocked_coroutines
             .remove(coroutine_token)
             .expect("Coros internal error: timeout expired for missing coroutine");
+
+        if let Some(eventset) = maybe_eventset {
+            match maybe_awoken_for_eventset_rx {
+                Some(awoken_for_eventset_rx) => {
+                    awoken_for_eventset_rx.send(eventset).unwrap(); //TODO: error handling
+                },
+                None => panic!("Coros internal error: coroutine awoken without eventset receiver"),
+            };
+        }
 
         self.work_provider.push(coroutine);
     }
