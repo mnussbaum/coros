@@ -127,20 +127,52 @@ impl ThreadScheduler {
     }
 
     fn enqueue_coroutine(&mut self, coroutine_token: Token, maybe_eventset: Option<EventSet>) {
-        let (coroutine, maybe_awoken_for_eventset_rx) = self
+        let blocked_on_io = self.blocked_on_io(coroutine_token);
+        let awoken_for_io = maybe_eventset.is_some();
+
+        match (blocked_on_io, awoken_for_io) {
+            (true, true) => {
+                // Blocked on IO, awoken for IO
+
+                let (coroutine, maybe_awoken_for_eventset_rx) = self
+                    .blocked_coroutines
+                    .remove(coroutine_token)
+                    .expect("Coros internal error: timeout expired for missing coroutine");
+                let awoken_for_eventset_rx = maybe_awoken_for_eventset_rx.unwrap();
+                let eventset = maybe_eventset.unwrap();
+
+                awoken_for_eventset_rx.send(eventset).unwrap(); //TODO: error handling
+                self.work_provider.push(coroutine);
+            },
+            (true, false) => {
+                // Blocked on IO, awoken for not-IO
+
+                panic!("Coros internal error: blocked on IO but awoken for not IO");
+            },
+            (false, true) => {
+                // Blocked on not-IO, awoken for IO
+
+                // Nooping for now, but coroutines should have a prexisting eventset
+                // queue where these can build up and can be returned from non-IO blocks
+            },
+            (false, false) => {
+                // Blocked on not-IO, awoken for not-IO
+
+                let (coroutine, _) = self
+                    .blocked_coroutines
+                    .remove(coroutine_token)
+                    .expect("Coros internal error: timeout expired for missing coroutine");
+                self.work_provider.push(coroutine);
+            },
+        };
+    }
+
+    fn blocked_on_io(&self, coroutine_token: Token) -> bool {
+        let &(_, ref maybe_awoken_for_eventset_rx) = self
             .blocked_coroutines
-            .remove(coroutine_token)
+            .get(coroutine_token)
             .expect("Coros internal error: timeout expired for missing coroutine");
 
-        if let Some(eventset) = maybe_eventset {
-            match maybe_awoken_for_eventset_rx {
-                Some(awoken_for_eventset_rx) => {
-                    awoken_for_eventset_rx.send(eventset).unwrap(); //TODO: error handling
-                },
-                None => panic!("Coros internal error: coroutine awoken without eventset receiver"),
-            };
-        }
-
-        self.work_provider.push(coroutine);
+        maybe_awoken_for_eventset_rx.is_some()
     }
 }
