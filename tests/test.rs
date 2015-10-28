@@ -269,30 +269,41 @@ fn test_writable_io() {
 fn test_deregister() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 1);
-    let (reader, mut writer) = unix::pipe().unwrap();
+    let (reader1, mut writer1) = unix::pipe().unwrap();
+    let (mut reader2, mut writer2) = unix::pipe().unwrap();
 
     let guard = pool.spawn(
         move |coroutine_handle: &mut CoroutineBlockingHandle| {
             coroutine_handle.register(
-                &reader,
+                &reader1,
                 EventSet::readable(),
                 PollOpt::level(),
             );
-            coroutine_handle.deregister(&reader);
 
-            // Due to implementation of blocking on IO and sleep, a thread
-            // can block itself on sleep, but then be awoken by a second IO ready
-            // notification due to the usage of level polling, it will then panic
-            // since it will have IO results to deal with. Deregister ensures we don't hit this
-            // case.
-            coroutine_handle.sleep_ms(500);
+            coroutine_handle.deregister(&reader1);
+
+            let awoken_for_eventset = coroutine_handle.register(
+                &writer2,
+                EventSet::writable(),
+                PollOpt::edge(),
+            );
+            assert_eq!(awoken_for_eventset, EventSet::writable());
+
+            writer2.try_write_buf(&mut SliceBuf::wrap("pong".as_bytes())).unwrap();
         },
         STACK_SIZE,
     );
 
     pool.start().unwrap();
-    writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
+    writer1.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
+
     guard.join().unwrap();
+
+    let mut read_result_buf = Vec::<u8>::new();
+    reader2.try_read_buf(&mut read_result_buf).unwrap();
+    let read_result = std::str::from_utf8(&read_result_buf).unwrap().to_string();
+    assert_eq!("pong", read_result);
+
     pool.stop().unwrap();
 }
 
