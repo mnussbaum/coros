@@ -69,11 +69,11 @@ impl ThreadScheduler {
         let mut coroutine = coroutine;
         coroutine.run(&self.scheduler_context);
         if !coroutine.terminated() {
-            let mio_callback = coroutine
-                .mio_callback
+            let event_loop_registration = coroutine
+                .event_loop_registration
                 .take()
                 .expect("Coros internal error: non-terminated state without callback");
-            mio_callback.call_box((coroutine, &mut self.mio_event_loop, &mut self.blocked_coroutines));
+            event_loop_registration.call_box((coroutine, &mut self.mio_event_loop, &mut self.blocked_coroutines));
         }
     }
 

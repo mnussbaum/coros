@@ -39,11 +39,12 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
     unreachable!("Coros internal error: execution should never reach here");
 }
 
+pub type EventLoopRegistrationCallback = Box<FnBox(Coroutine, &mut EventLoop<ThreadScheduler>, &mut Slab<Coroutine>)>;
 
 pub struct Coroutine {
     pub context: Option<Context>,
     function: Option<Box<FnBox(&mut CoroutineBlockingHandle) + Send + 'static>>,
-    pub mio_callback: Option<Box<FnBox(Coroutine, &mut EventLoop<ThreadScheduler>, &mut Slab<Coroutine>)>>,
+    pub event_loop_registration: Option<EventLoopRegistrationCallback>,
     pub state: CoroutineState,
 }
 
@@ -58,7 +59,7 @@ impl Coroutine {
         let mut coroutine = Coroutine {
             context: None,
             function: Some(function),
-            mio_callback: None,
+            event_loop_registration: None,
             state: CoroutineState::New,
         };
         let context = Context::new(

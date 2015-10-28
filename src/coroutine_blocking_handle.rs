@@ -11,6 +11,7 @@ use mio::{
 use context::Context;
 
 use coroutine::{
+    EventLoopRegistrationCallback,
     Coroutine,
     CoroutineState,
 };
@@ -42,14 +43,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
                 .expect("Coros internal error: ran out of slab");
         };
 
-        self.coroutine.mio_callback = Some(Box::new(mio_callback));
-
-        match self.coroutine.context {
-            Some(ref context) => {
-                Context::swap(context, self.scheduler_context);
-            },
-            None => panic!("Coros internal error: cannot sleep coroutine without context"),
-        };
+        self.suspend_with_callback(Box::new(mio_callback));
     }
 
     pub fn recv<M: Send>(&mut self, receiver: &CoroutineReceiver<M>) -> Result<M, RecvError> {
@@ -71,14 +65,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
             blocked_message_sender.send(message).unwrap(); //TODO: handle errors, encapsulate
         };
 
-        self.coroutine.mio_callback = Some(Box::new(mio_callback));
-
-        match self.coroutine.context {
-            Some(ref context) => {
-                Context::swap(context, self.scheduler_context);
-            },
-            None => panic!("Coros internal error: cannot recv in coroutine without context"),
-        };
+        self.suspend_with_callback(Box::new(mio_callback));
 
         receiver.recv()
     }
@@ -104,14 +91,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
             ).unwrap(); //TODO: error handling
         };
 
-        self.coroutine.mio_callback = Some(Box::new(mio_callback));
-
-        match self.coroutine.context {
-            Some(ref context) => {
-                Context::swap(context, self.scheduler_context);
-            },
-            None => panic!("Coros internal error: cannot register IO in coroutine without context"),
-        };
+        self.suspend_with_callback(Box::new(mio_callback));
     }
 
     pub fn deregister<E: ?Sized>(&mut self, io: &E)
@@ -133,14 +113,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
                 .expect("Coros internal error: ran out of slab");
         };
 
-        self.coroutine.mio_callback = Some(Box::new(mio_callback));
-
-        match self.coroutine.context {
-            Some(ref context) => {
-                Context::swap(context, self.scheduler_context);
-            },
-            None => panic!("Coros internal error: cannot deregister IO in coroutine without context"),
-        };
+        self.suspend_with_callback(Box::new(mio_callback));
     }
 
     pub fn reregister<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt)
@@ -164,13 +137,17 @@ impl<'a> CoroutineBlockingHandle<'a> {
             ).unwrap(); //TODO: error handling
         };
 
-        self.coroutine.mio_callback = Some(Box::new(mio_callback));
+        self.suspend_with_callback(Box::new(mio_callback));
+    }
+
+    fn suspend_with_callback(&mut self, event_loop_registration: EventLoopRegistrationCallback) {
+        self.coroutine.event_loop_registration = Some(event_loop_registration);
 
         match self.coroutine.context {
             Some(ref context) => {
                 Context::swap(context, self.scheduler_context);
             },
-            None => panic!("Coros internal error: cannot reregister IO in coroutine without context"),
+            None => panic!("Coros internal error: block coroutine without context"),
         };
     }
 }
