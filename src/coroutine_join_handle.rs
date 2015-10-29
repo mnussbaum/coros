@@ -1,6 +1,7 @@
-use std::sync::mpsc::Receiver;
-
-use Result;
+use std::sync::mpsc::{
+    Receiver,
+    RecvError,
+};
 
 pub struct CoroutineJoinHandle<T>
     where T: Send + 'static
@@ -19,16 +20,15 @@ impl<T> CoroutineJoinHandle<T>
         }
     }
 
-    pub fn join(&self) -> Result<T> {
-        let coroutine_result = try!(self.coroutine_result_receiver.recv());
-        Ok(coroutine_result)
+    pub fn join(&self) -> Result<T, RecvError> {
+        self.coroutine_result_receiver.recv()
     }
 }
-
-impl<T> Drop for CoroutineJoinHandle<T>
-    where T: Send + 'static
-{
-    fn drop(&mut self) {
-        self.join().unwrap();
-    }
-}
+//
+// impl<T> Drop for CoroutineJoinHandle<T>
+//     where T: Send + 'static
+// {
+//     fn drop(&mut self) {
+//         self.join().unwrap();
+//     }
+// }
