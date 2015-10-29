@@ -24,3 +24,11 @@ impl<T> CoroutineJoinHandle<T>
         Ok(coroutine_result)
     }
 }
+
+impl<T> Drop for CoroutineJoinHandle<T>
+    where T: Send + 'static
+{
+    fn drop(&mut self) {
+        self.join().unwrap();
+    }
+}

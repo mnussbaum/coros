@@ -95,6 +95,16 @@ fn test_dropping_the_pool_stops_it() {
 }
 
 #[test]
+#[allow(unused_variables)]
+fn test_dropping_a_join_handle_joins_it() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1);
+    let handle = pool.spawn(|_| { thread::sleep_ms(500); 1 }, STACK_SIZE);
+
+    pool.start().unwrap();
+}
+
+#[test]
 fn test_work_stealing() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 2);
