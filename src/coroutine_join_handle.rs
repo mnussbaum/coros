@@ -7,6 +7,7 @@ pub struct CoroutineJoinHandle<T>
     where T: Send + 'static
 {
     coroutine_result_receiver: Receiver<T>,
+    is_joined: bool,
 }
 
 impl<T> CoroutineJoinHandle<T>
@@ -17,18 +18,27 @@ impl<T> CoroutineJoinHandle<T>
     {
         CoroutineJoinHandle {
             coroutine_result_receiver: coroutine_result_receiver,
+            is_joined: false,
         }
     }
 
-    pub fn join(&self) -> Result<T, RecvError> {
-        self.coroutine_result_receiver.recv()
+    pub fn join(&mut self) -> Result<Option<T>, RecvError> {
+        if self.is_joined {
+            return Ok(None)
+        }
+
+        self.is_joined = true;
+        match self.coroutine_result_receiver.recv() {
+            Ok(result) => Ok(Some(result)),
+            Err(err) => Err(err),
+        }
     }
 }
-//
-// impl<T> Drop for CoroutineJoinHandle<T>
-//     where T: Send + 'static
-// {
-//     fn drop(&mut self) {
-//         self.join().unwrap();
-//     }
-// }
+
+impl<T> Drop for CoroutineJoinHandle<T>
+    where T: Send + 'static
+{
+    fn drop(&mut self) {
+        self.join().unwrap();
+    }
+}
