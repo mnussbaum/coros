@@ -80,7 +80,7 @@ impl ThreadScheduler {
         }
     }
 
-    pub fn start(&mut self) {
+    pub fn run(&mut self) {
         'event_loop:
         while self.shutdown_receiver.try_recv().is_err() {
             self.move_received_work_onto_queue();

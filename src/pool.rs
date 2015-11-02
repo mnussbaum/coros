@@ -165,7 +165,7 @@ impl Pool {
             .expect("Coros internal error: trying to start pool without schedulers");
         thread_pool.scoped(|scoped| {
             for mut thread_scheduler in thread_schedulers.drain(..) {
-                scoped.execute(move || { thread_scheduler.start(); () });
+                scoped.execute(move || { thread_scheduler.run(); () });
             }
         });
 
