@@ -379,3 +379,22 @@ fn test_reregister() {
     assert_eq!(guard.join().unwrap().unwrap(), "ping");
     pool.stop().unwrap();
 }
+
+#[test]
+fn test_blocked_coroutines_are_waited_on_by_pool_stop() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1);
+
+    let mut guard = pool.spawn(
+        move |coroutine_handle: &mut CoroutineBlockingHandle| {
+            coroutine_handle.sleep_ms(500);
+            1
+        },
+        STACK_SIZE,
+    );
+
+    pool.start().unwrap();
+    thread::sleep_ms(100);
+    pool.stop().unwrap();
+    assert_eq!(1, guard.join().unwrap().unwrap());
+}

@@ -25,6 +25,7 @@ pub type BlockedCoroutineSlab = Slab<(Coroutine, Option<Sender<EventSet>>)>;
 
 pub struct ThreadScheduler {
     blocked_coroutines: BlockedCoroutineSlab,
+    is_shutting_down: bool,
     mio_event_loop: EventLoop<ThreadScheduler>,
     scheduler_context: Context,
     shutdown_receiver: Receiver<()>,
@@ -59,6 +60,7 @@ impl ThreadScheduler {
     ) -> ThreadScheduler {
         ThreadScheduler {
             blocked_coroutines: Slab::new(1024 * 64),
+            is_shutting_down: false,
             mio_event_loop: EventLoop::new().unwrap(),
             scheduler_context: Context::empty(),
             shutdown_receiver: shutdown_receiver,
@@ -82,7 +84,7 @@ impl ThreadScheduler {
 
     pub fn run(&mut self) {
         'event_loop:
-        while self.shutdown_receiver.try_recv().is_err() {
+        while !self.ready_to_shutdown() {
             self.move_received_work_onto_queue();
             let raw_self_ptr: *mut ThreadScheduler = self;
             self.mio_event_loop
@@ -99,6 +101,14 @@ impl ThreadScheduler {
                 },
             }
         };
+    }
+
+    fn ready_to_shutdown(&mut self) -> bool {
+        if self.shutdown_receiver.try_recv().is_ok() {
+            self.is_shutting_down = true
+        }
+
+        self.is_shutting_down && self.blocked_coroutines.is_empty()
     }
 
     pub fn stolen_work(&mut self) -> Option<Coroutine> {
