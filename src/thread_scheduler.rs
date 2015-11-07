@@ -51,6 +51,8 @@ impl MioHandler for ThreadScheduler {
     }
 }
 
+const MAX_STOLEN_WORK_BATCH_SIZE: usize = 1000;
+
 impl ThreadScheduler {
     pub fn new(
         shutdown_receiver: Receiver<()>,
@@ -127,7 +129,7 @@ impl ThreadScheduler {
     }
 
     pub fn move_received_work_onto_queue(&self) {
-        for _ in (0..1000) {
+        for _ in (0..MAX_STOLEN_WORK_BATCH_SIZE) {
             match self.work_receiver.try_recv() {
                 Ok(work) => self.work_provider.push(work),
                 Err(TryRecvError::Empty) => break,
