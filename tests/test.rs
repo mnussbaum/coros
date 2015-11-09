@@ -181,7 +181,7 @@ fn test_sleeping_coroutine_is_not_awoken_for_io() {
             );
             let start_time = now();
             coroutine_handle.sleep_ms(500);
-            assert!((now() - start_time) < Duration::milliseconds(500));
+            assert!((now() - start_time) >= Duration::milliseconds(400));
             coroutine_handle.deregister(&reader);
         },
         STACK_SIZE,
