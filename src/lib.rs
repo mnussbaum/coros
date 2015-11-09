@@ -13,7 +13,7 @@ pub use coroutine_blocking_handle::CoroutineBlockingHandle;
 mod coroutine_join_handle;
 pub use coroutine_join_handle::CoroutineJoinHandle;
 mod error;
-pub use error::CoroError;
+pub use error::CorosError;
 mod coroutine_channel;
 pub use coroutine_channel::{
     CoroutineReceiver,
@@ -25,4 +25,4 @@ mod pool;
 pub use pool::Pool;
 
 use std::result;
-pub type Result<'a, T> = result::Result<T, CoroError<'a>>;
+pub type Result<'a, T> = result::Result<T, CorosError<'a>>;

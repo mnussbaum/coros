@@ -12,62 +12,62 @@ use std::sync::{
 use scoped_threadpool::Pool as ThreadPool;
 
 #[derive(Debug)]
-pub enum CoroError<'a> {
+pub enum CorosError<'a> {
     RecvError(mpsc::RecvError),
     ThreadPoolReadLockPoisoned(PoisonError<RwLockReadGuard<'a, ThreadPool>>),
     ThreadPoolWriteLockPoisoned(PoisonError<RwLockWriteGuard<'a, ThreadPool>>),
 }
 
-impl<'a> CoroError<'a> {
+impl<'a> CorosError<'a> {
     pub fn description(&self) -> &str {
         match *self {
-            CoroError::RecvError(ref err) => err.description(),
-            CoroError::ThreadPoolReadLockPoisoned(_) => {
+            CorosError::RecvError(ref err) => err.description(),
+            CorosError::ThreadPoolReadLockPoisoned(_) => {
                 "Pool's thread pool read lock poisoned"
             },
-            CoroError::ThreadPoolWriteLockPoisoned(_) => {
+            CorosError::ThreadPoolWriteLockPoisoned(_) => {
                 "Pool's thread pool write lock poisoned"
             },
         }
     }
 }
 
-impl<'a> Error for CoroError<'a> {
+impl<'a> Error for CorosError<'a> {
     fn description(&self) -> &str {
         self.description()
     }
 
     fn cause(&self) -> Option<&Error> {
         match *self {
-            CoroError::RecvError(ref err) => Some(err),
-            CoroError::ThreadPoolReadLockPoisoned(_) => None,
-            CoroError::ThreadPoolWriteLockPoisoned(_) => None,
+            CorosError::RecvError(ref err) => Some(err),
+            CorosError::ThreadPoolReadLockPoisoned(_) => None,
+            CorosError::ThreadPoolWriteLockPoisoned(_) => None,
         }
     }
 }
 
-impl<'a> fmt::Display for CoroError<'a> {
+impl<'a> fmt::Display for CorosError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.description())
     }
 }
 
-impl<'a> From<mpsc::RecvError> for CoroError<'a> {
-    fn from(err: mpsc::RecvError) -> CoroError<'a> {
-        CoroError::RecvError(err)
+impl<'a> From<mpsc::RecvError> for CorosError<'a> {
+    fn from(err: mpsc::RecvError) -> CorosError<'a> {
+        CorosError::RecvError(err)
     }
 }
 
-impl<'a> From<PoisonError<RwLockReadGuard<'a, ThreadPool>>> for CoroError<'a> {
-    fn from(err: PoisonError<RwLockReadGuard<'a, ThreadPool>>) -> CoroError<'a> {
+impl<'a> From<PoisonError<RwLockReadGuard<'a, ThreadPool>>> for CorosError<'a> {
+    fn from(err: PoisonError<RwLockReadGuard<'a, ThreadPool>>) -> CorosError<'a> {
         error!("Error obtaining thread pool read lock {:?}", err);
-        CoroError::ThreadPoolReadLockPoisoned(err)
+        CorosError::ThreadPoolReadLockPoisoned(err)
     }
 }
 
-impl<'a> From<PoisonError<RwLockWriteGuard<'a, ThreadPool>>> for CoroError<'a> {
-    fn from(err: PoisonError<RwLockWriteGuard<'a, ThreadPool>>) -> CoroError<'a> {
+impl<'a> From<PoisonError<RwLockWriteGuard<'a, ThreadPool>>> for CorosError<'a> {
+    fn from(err: PoisonError<RwLockWriteGuard<'a, ThreadPool>>) -> CorosError<'a> {
         error!("Error obtaining thread pool write lock {:?}", err);
-        CoroError::ThreadPoolWriteLockPoisoned(err)
+        CorosError::ThreadPoolWriteLockPoisoned(err)
     }
 }
