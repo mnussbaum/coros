@@ -29,8 +29,8 @@ pub struct ThreadScheduler {
     mio_event_loop: EventLoop<ThreadScheduler>,
     scheduler_context: Context,
     shutdown_receiver: Receiver<()>,
-    work_receiver: Receiver<Coroutine>,
     work_provider: Worker<Coroutine>,
+    work_receiver: Receiver<Coroutine>,
     work_stealers: Mutex<Vec<Stealer<Coroutine>>>,
 }
 

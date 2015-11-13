@@ -400,3 +400,35 @@ fn test_blocked_coroutines_are_waited_on_by_pool_stop() {
     pool.stop().unwrap();
     assert_eq!(1, guard.join().unwrap().unwrap());
 }
+
+#[test]
+fn test_multiple_pool_starts_is_ok() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1);
+
+    let mut guard = pool.spawn(
+        move |_: &mut CoroutineBlockingHandle| { 1 },
+        STACK_SIZE,
+    );
+
+    pool.start().unwrap();
+    pool.start().unwrap();
+    assert_eq!(1, guard.join().unwrap().unwrap());
+    pool.stop().unwrap();
+}
+
+#[test]
+fn test_multiple_pool_stops_is_ok() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1);
+
+    let mut guard = pool.spawn(
+        move |_: &mut CoroutineBlockingHandle| { 1 },
+        STACK_SIZE,
+    );
+
+    pool.start().unwrap();
+    assert_eq!(1, guard.join().unwrap().unwrap());
+    pool.stop().unwrap();
+    pool.stop().unwrap();
+}

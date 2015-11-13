@@ -1,8 +1,8 @@
 use std::fmt;
-use std::mem;
 use std::sync::RwLock;
 use std::sync::mpsc::{
     channel,
+    Receiver,
     Sender,
 };
 
@@ -27,19 +27,25 @@ use coroutine::{
     CoroutineState,
 };
 use coroutine_blocking_handle::CoroutineBlockingHandle;
+use error::CorosError;
 use thread_scheduler::ThreadScheduler;
 
 struct ThreadSchedulerComponents {
     shutdown_senders: Vec<Sender<()>>,
+    result_receiver: Receiver<()>,
+    result_sender: Sender<()>,
     thread_schedulers: Vec<ThreadScheduler>,
     work_senders: Vec<Sender<Coroutine>>,
 }
 
 pub struct Pool {
+    pub is_running: bool,
     pub name: String,
     shutdown_senders: Vec<Sender<()>>,
     thread_count: u32,
     thread_pool: RwLock<ThreadPool>,
+    thread_scheduler_result_receiver: Receiver<()>,
+    thread_scheduler_result_sender: Sender<()>,
     thread_schedulers: Option<Vec<ThreadScheduler>>,
     work_senders: Vec<Sender<Coroutine>>,
 }
@@ -60,10 +66,13 @@ impl Pool {
     pub fn new(name: String, thread_count: u32) -> Pool {
         let thread_scheduler_components = Pool::create_thread_schedulers(thread_count);
         Pool {
+            is_running: false,
             name: name,
             shutdown_senders: thread_scheduler_components.shutdown_senders,
             thread_count: thread_count,
             thread_pool: RwLock::new(ThreadPool::new(thread_count)),
+            thread_scheduler_result_receiver: thread_scheduler_components.result_receiver,
+            thread_scheduler_result_sender: thread_scheduler_components.result_sender,
             thread_schedulers: Some(thread_scheduler_components.thread_schedulers),
             work_senders: thread_scheduler_components.work_senders,
         }
@@ -97,7 +106,10 @@ impl Pool {
             thread_schedulers.push(thread_scheduler);
         }
 
+        let (result_sender, result_receiver) = channel();
         ThreadSchedulerComponents {
+            result_receiver: result_receiver,
+            result_sender: result_sender,
             shutdown_senders: shutdown_senders,
             thread_schedulers: thread_schedulers,
             work_senders: work_senders,
@@ -158,6 +170,10 @@ impl Pool {
 
 
     pub fn start(&mut self) -> Result<()> {
+        if self.is_running {
+            return Ok(())
+        }
+
         let mut thread_pool =  try!(self.thread_pool.write());
         let mut thread_schedulers = self
             .thread_schedulers
@@ -165,26 +181,43 @@ impl Pool {
             .expect("Coros internal error: trying to start pool without schedulers");
         thread_pool.scoped(|scoped| {
             for mut thread_scheduler in thread_schedulers.drain(..) {
-                scoped.execute(move || { thread_scheduler.run(); () });
+                let thread_scheduler_result_sender = self.thread_scheduler_result_sender.clone();
+                scoped.execute(move || {
+                    let scheduler_result = thread_scheduler.run();
+                    thread_scheduler_result_sender
+                        .send(scheduler_result)
+                        .unwrap();
+                });
             }
         });
+        self.is_running = true;
 
         Ok(())
     }
 
-    pub fn stop(&mut self) -> Result<()> {
+    pub fn stop(&mut self) -> Result<Vec<Result<()>>> {
+        if !self.is_running {
+            return Ok(Vec::with_capacity(0));
+        }
+
         let thread_pool =  try!(self.thread_pool.write());
-        let mut shutdown_senders = mem::replace(
-            &mut self.shutdown_senders,
-            Vec::with_capacity(self.thread_count as usize),
-        );
-        for shutdown_sender in shutdown_senders.drain(..) {
+        for shutdown_sender in self.shutdown_senders.drain(..) {
             shutdown_sender
                 .send(())
                 .expect("Coros internal error: error shutting down threads");
         }
         thread_pool.join_all();
-        Ok(())
+
+        let mut results = Vec::with_capacity(self.thread_count as usize);
+        for _ in (0..self.thread_count) {
+            match self.thread_scheduler_result_receiver.recv() {
+                Ok(result) => results.push(Ok(result)),
+                Err(e) => results.push(Err(CorosError::from(e))),
+            };
+        }
+        self.is_running = false;
+
+        Ok(results)
     }
 }
 
