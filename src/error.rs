@@ -13,6 +13,7 @@ use scoped_threadpool::Pool as ThreadPool;
 
 #[derive(Debug)]
 pub enum CorosError<'a> {
+    InvalidThreadForSpawn(u32, u32),
     RecvError(mpsc::RecvError),
     ThreadPoolReadLockPoisoned(PoisonError<RwLockReadGuard<'a, ThreadPool>>),
     ThreadPoolWriteLockPoisoned(PoisonError<RwLockWriteGuard<'a, ThreadPool>>),
@@ -21,6 +22,9 @@ pub enum CorosError<'a> {
 impl<'a> CorosError<'a> {
     pub fn description(&self) -> &str {
         match *self {
+            CorosError::InvalidThreadForSpawn(_, _) => {
+                "Index of thread for coroutine spawn greater then thread count"
+            },
             CorosError::RecvError(ref err) => err.description(),
             CorosError::ThreadPoolReadLockPoisoned(_) => {
                 "Pool's thread pool read lock poisoned"
@@ -39,6 +43,7 @@ impl<'a> Error for CorosError<'a> {
 
     fn cause(&self) -> Option<&Error> {
         match *self {
+            CorosError::InvalidThreadForSpawn(_, _) => None,
             CorosError::RecvError(ref err) => Some(err),
             CorosError::ThreadPoolReadLockPoisoned(_) => None,
             CorosError::ThreadPoolWriteLockPoisoned(_) => None,

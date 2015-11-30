@@ -121,18 +121,16 @@ impl Pool {
         coroutine_body: F,
         stack_size: usize,
         thread_index: u32
-    ) -> CoroutineJoinHandle<T>
+    ) -> Result<CoroutineJoinHandle<T>>
         where F: FnOnce(&mut CoroutineBlockingHandle) -> T + Send + 'static,
               T: Send + 'static,
     {
-        let error_message = format!(
-            "Corors error: cannot spawn in thread {} in a pool of size {}",
-            thread_index,
-            self.thread_count,
-        );
-        let work_sender = self.work_senders
-            .get(thread_index as usize)
-            .expect(&error_message[..]);
+        let work_sender = match self.work_senders.get(thread_index as usize) {
+            None => {
+                return Err(CorosError::InvalidThreadForSpawn(thread_index, self.thread_count))
+            }
+            Some(work_sender) => work_sender,
+        };
 
         let (coroutine_result_sender, coroutine_result_receiver) = channel();
         let coroutine_function = Box::new(move |coroutine_handle: &mut CoroutineBlockingHandle| {
@@ -151,12 +149,12 @@ impl Pool {
 
         work_sender
             .send(coroutine)
-            .expect("Coros error: attempting to send work to closed channel");
+            .expect("Coros internal error: sending work to closed channel");
 
-        CoroutineJoinHandle::<T>::new(coroutine_result_receiver)
+        Ok(CoroutineJoinHandle::<T>::new(coroutine_result_receiver))
     }
 
-    pub fn spawn<F, T>(&mut self, coroutine_body: F, stack_size: usize) -> CoroutineJoinHandle<T>
+    pub fn spawn<F, T>(&mut self, coroutine_body: F, stack_size: usize) -> Result<CoroutineJoinHandle<T>>
         where F: FnOnce(&mut CoroutineBlockingHandle) -> T + Send + 'static,
               T: Send + 'static,
     {

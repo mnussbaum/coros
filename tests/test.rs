@@ -24,7 +24,7 @@ const STACK_SIZE: usize = 2 * 1024 * 1024;
 fn test_pool() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 1);
-    let mut guard = pool.spawn(|_| { 1 }, STACK_SIZE);
+    let mut guard = pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
     pool.start().unwrap();
 
     assert_eq!(1, guard.join().unwrap().unwrap());
@@ -37,8 +37,8 @@ fn test_spawning_after_start() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 1);
     pool.start().unwrap();
-    let mut guard = pool.spawn(|_| { 1 }, STACK_SIZE);
 
+    let mut guard  = pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
     assert_eq!(1, guard.join().unwrap().unwrap());
 
     pool.stop().unwrap();
@@ -49,8 +49,8 @@ fn test_spawning_multiple_coroutines() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 1);
     pool.start().unwrap();
-    let mut guard1 = pool.spawn(|_| { 1 }, STACK_SIZE);
-    let mut guard2 = pool.spawn(|_| { 2 }, STACK_SIZE);
+    let mut guard1 = pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
+    let mut guard2 = pool.spawn(|_| { 2 }, STACK_SIZE).unwrap();
 
     assert_eq!(1, guard1.join().unwrap().unwrap());
     assert_eq!(2, guard2.join().unwrap().unwrap());
@@ -66,16 +66,16 @@ fn test_coroutine_panic() {
     let mut guard1 = pool.spawn(
         |_| { thread::catch_panic(move || { panic!("panic1") }) },
         STACK_SIZE,
-    );
+    ).unwrap();
     let mut guard2 = pool.spawn(
         |_| { thread::catch_panic(move || { panic!("panic2") }) },
         STACK_SIZE,
-    );
+    ).unwrap();
     let mut guard4 = pool.spawn(
         |_| { thread::catch_panic(move || { 4 }) },
         STACK_SIZE,
-    );
-    let mut guard5 = pool.spawn(|_| { 5 }, STACK_SIZE);
+    ).unwrap();
+    let mut guard5 = pool.spawn(|_| { 5 }, STACK_SIZE).unwrap();
     assert!(guard1.join().unwrap().unwrap().is_err());
     assert!(guard2.join().unwrap().unwrap().is_err());
     assert_eq!(4, guard4.join().unwrap().unwrap().unwrap());
@@ -91,7 +91,7 @@ fn test_dropping_the_pool_stops_it() {
     let mut pool = Pool::new(pool_name, 1);
 
     pool.start().unwrap();
-    pool.spawn(|_| { 1 }, STACK_SIZE).join().unwrap().unwrap();
+    pool.spawn(|_| { 1 }, STACK_SIZE).unwrap().join().unwrap().unwrap();
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn test_dropping_the_pool_stops_it() {
 fn test_dropping_a_join_handle_joins_it() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 1);
-    let handle = pool.spawn(|_| { thread::sleep_ms(500); 1 }, STACK_SIZE);
+    let handle = pool.spawn(|_| { thread::sleep_ms(500); 1 }, STACK_SIZE).unwrap();
 
     pool.start().unwrap();
 }
@@ -108,8 +108,8 @@ fn test_dropping_a_join_handle_joins_it() {
 fn test_work_stealing() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 2);
-    let mut guard2 = pool.spawn_with_thread_index(|_| { 2 }, STACK_SIZE, 0);
-    let mut guard1 = pool.spawn_with_thread_index(|_| { thread::sleep_ms(500); 1 }, STACK_SIZE, 0);
+    let mut guard2 = pool.spawn_with_thread_index(|_| { 2 }, STACK_SIZE, 0).unwrap();
+    let mut guard1 = pool.spawn_with_thread_index(|_| { thread::sleep_ms(500); 1 }, STACK_SIZE, 0).unwrap();
 
     let start_time = now();
     pool.start().unwrap();
@@ -130,13 +130,13 @@ fn test_nested_coroutines() {
             let inner_pool_name = "inner".to_string();
             let mut inner_pool = Pool::new(inner_pool_name, 2);
             inner_pool.start().unwrap();
-            let mut inner_guard = inner_pool.spawn(|_| { 1 }, STACK_SIZE);
+            let mut inner_guard = inner_pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
             let inner_result = inner_guard.join().unwrap().unwrap();
             inner_pool.stop().unwrap();
             inner_result
         },
         STACK_SIZE,
-    );
+    ).unwrap();
 
     outer_pool.start().unwrap();
     assert_eq!(1, outer_guard.join().unwrap().unwrap());
@@ -147,7 +147,7 @@ fn test_nested_coroutines() {
 fn test_sleep_ms() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 2);
-    let mut guard1 = pool.spawn_with_thread_index(|_| { 1 }, STACK_SIZE, 0);
+    let mut guard1 = pool.spawn_with_thread_index(|_| { 1 }, STACK_SIZE, 0).unwrap();
     let mut guard2 = pool.spawn_with_thread_index(
         |coroutine_handle: &mut CoroutineBlockingHandle| {
             coroutine_handle.sleep_ms(500);
@@ -155,7 +155,7 @@ fn test_sleep_ms() {
         },
         STACK_SIZE,
         1,
-    );
+    ).unwrap();
 
     let start_time = now();
     pool.start().unwrap();
@@ -185,7 +185,7 @@ fn test_sleeping_coroutine_is_not_awoken_for_io() {
             coroutine_handle.deregister(&reader);
         },
         STACK_SIZE,
-    );
+    ).unwrap();
 
     pool.start().unwrap();
     writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
@@ -203,7 +203,7 @@ fn test_channel_recv() {
             coroutine_handle.recv(&receiver).unwrap()
         },
         STACK_SIZE,
-    );
+    ).unwrap();
 
     pool.start().unwrap();
     sender.send(1);
@@ -230,7 +230,7 @@ fn test_readable_io() {
             std::str::from_utf8(&result_buf).unwrap().to_string()
         },
         STACK_SIZE,
-    );
+    ).unwrap();
 
     writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
 
@@ -261,7 +261,7 @@ fn test_eventset_of_result_is_returned_by_register() {
             std::str::from_utf8(&result_buf).unwrap().to_string()
         },
         STACK_SIZE,
-    );
+    ).unwrap();
 
     writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
 
@@ -289,7 +289,7 @@ fn test_writable_io() {
             writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
         },
         STACK_SIZE,
-    );
+    ).unwrap();
     pool.start().unwrap();
     guard.join().unwrap().unwrap();
 
@@ -329,7 +329,7 @@ fn test_deregister() {
             writer2.try_write_buf(&mut SliceBuf::wrap("pong".as_bytes())).unwrap();
         },
         STACK_SIZE,
-    );
+    ).unwrap();
 
     pool.start().unwrap();
     writer1.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
@@ -374,7 +374,7 @@ fn test_reregister() {
             read
         },
         STACK_SIZE,
-    );
+    ).unwrap();
 
     pool.start().unwrap();
     writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
@@ -393,7 +393,7 @@ fn test_blocked_coroutines_are_waited_on_by_pool_stop() {
             1
         },
         STACK_SIZE,
-    );
+    ).unwrap();
 
     pool.start().unwrap();
     thread::sleep_ms(100);
@@ -409,7 +409,7 @@ fn test_multiple_pool_starts_is_ok() {
     let mut guard = pool.spawn(
         move |_: &mut CoroutineBlockingHandle| { 1 },
         STACK_SIZE,
-    );
+    ).unwrap();
 
     pool.start().unwrap();
     pool.start().unwrap();
@@ -425,10 +425,11 @@ fn test_multiple_pool_stops_is_ok() {
     let mut guard = pool.spawn(
         move |_: &mut CoroutineBlockingHandle| { 1 },
         STACK_SIZE,
-    );
+    ).unwrap();
 
     pool.start().unwrap();
     assert_eq!(1, guard.join().unwrap().unwrap());
     pool.stop().unwrap();
     pool.stop().unwrap();
 }
+
