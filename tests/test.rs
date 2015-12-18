@@ -1,11 +1,11 @@
-#![feature(catch_panic)]
+#![feature(recover)]
 extern crate bytes;
 extern crate mio;
 extern crate time;
 
 extern crate coros;
 
-use std::thread;
+use std::time::Duration as StdDuration;
 
 use bytes::SliceBuf;
 use mio::*;
@@ -64,15 +64,15 @@ fn test_coroutine_panic() {
     let mut pool = Pool::new(pool_name, 1);
     pool.start().unwrap();
     let mut guard1 = pool.spawn(
-        |_| { thread::catch_panic(move || { panic!("panic1") }) },
+        |_| { std::panic::recover(move || { panic!("panic1") }) },
         STACK_SIZE,
     ).unwrap();
     let mut guard2 = pool.spawn(
-        |_| { thread::catch_panic(move || { panic!("panic2") }) },
+        |_| { std::panic::recover(move || { panic!("panic2") }) },
         STACK_SIZE,
     ).unwrap();
     let mut guard4 = pool.spawn(
-        |_| { thread::catch_panic(move || { 4 }) },
+        |_| { std::panic::recover(move || { 4 }) },
         STACK_SIZE,
     ).unwrap();
     let mut guard5 = pool.spawn(|_| { 5 }, STACK_SIZE).unwrap();
@@ -99,7 +99,7 @@ fn test_dropping_the_pool_stops_it() {
 fn test_dropping_a_join_handle_joins_it() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 1);
-    let handle = pool.spawn(|_| { thread::sleep_ms(500); 1 }, STACK_SIZE).unwrap();
+    let handle = pool.spawn(|_| { std::thread::sleep(StdDuration::from_millis(500)); 1 }, STACK_SIZE).unwrap();
 
     pool.start().unwrap();
 }
@@ -109,7 +109,7 @@ fn test_work_stealing() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 2);
     let mut guard2 = pool.spawn_with_thread_index(|_| { 2 }, STACK_SIZE, 0).unwrap();
-    let mut guard1 = pool.spawn_with_thread_index(|_| { thread::sleep_ms(500); 1 }, STACK_SIZE, 0).unwrap();
+    let mut guard1 = pool.spawn_with_thread_index(|_| { std::thread::sleep(StdDuration::from_millis(500)); 1 }, STACK_SIZE, 0).unwrap();
 
     let start_time = now();
     pool.start().unwrap();
@@ -396,7 +396,7 @@ fn test_blocked_coroutines_are_waited_on_by_pool_stop() {
     ).unwrap();
 
     pool.start().unwrap();
-    thread::sleep_ms(100);
+    std::thread::sleep(StdDuration::from_millis(100));
     pool.stop().unwrap();
     assert_eq!(1, guard.join().unwrap().unwrap());
 }

@@ -86,7 +86,7 @@ impl Pool {
         let mut work_senders: Vec<Sender<Coroutine>> = Vec::with_capacity(thread_count);
         let mut shutdown_senders: Vec<Sender<()>> = Vec::with_capacity(thread_count);
 
-        for _ in (0..thread_count) {
+        for _ in 0..thread_count {
             let (work_provider, work_stealer) = BufferPool::<Coroutine>::new().deque();
             work_providers.push(work_provider);
             work_stealers.push(work_stealer);
@@ -207,7 +207,7 @@ impl Pool {
         thread_pool.join_all();
 
         let mut results = Vec::with_capacity(self.thread_count as usize);
-        for _ in (0..self.thread_count) {
+        for _ in 0..self.thread_count {
             match self.thread_scheduler_result_receiver.recv() {
                 Ok(result) => results.push(Ok(result)),
                 Err(e) => results.push(Err(CorosError::from(e))),
