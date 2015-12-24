@@ -32,8 +32,8 @@ use thread_scheduler::ThreadScheduler;
 
 struct ThreadSchedulerComponents {
     shutdown_senders: Vec<Sender<()>>,
-    result_receiver: Receiver<()>,
-    result_sender: Sender<()>,
+    result_receiver: Receiver<Result<()>>,
+    result_sender: Sender<Result<()>>,
     thread_schedulers: Vec<ThreadScheduler>,
     work_senders: Vec<Sender<Coroutine>>,
 }
@@ -44,8 +44,8 @@ pub struct Pool {
     shutdown_senders: Vec<Sender<()>>,
     thread_count: u32,
     thread_pool: RwLock<ThreadPool>,
-    thread_scheduler_result_receiver: Receiver<()>,
-    thread_scheduler_result_sender: Sender<()>,
+    thread_scheduler_result_receiver: Receiver<Result<()>>,
+    thread_scheduler_result_sender: Sender<Result<()>>,
     thread_schedulers: Option<Vec<ThreadScheduler>>,
     work_senders: Vec<Sender<Coroutine>>,
 }
@@ -193,7 +193,7 @@ impl Pool {
         Ok(())
     }
 
-    pub fn stop(&mut self) -> Result<Vec<Result<()>>> {
+    pub fn stop(&mut self) -> Result<Vec<Result<Result<()>>>> {
         if !self.is_running {
             return Ok(Vec::with_capacity(0));
         }

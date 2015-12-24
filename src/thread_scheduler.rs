@@ -20,6 +20,8 @@ use mio::{
 use mio::Handler as MioHandler;
 
 use coroutine::Coroutine;
+use error::CorosError;
+use Result;
 
 pub type BlockedCoroutineSlab = Slab<(Coroutine, Option<Sender<EventSet>>)>;
 
@@ -72,37 +74,47 @@ impl ThreadScheduler {
         }
     }
 
-    fn run_coroutine(&mut self, coroutine: Coroutine) {
+    fn run_coroutine(&mut self, coroutine: Coroutine) -> Result<()> {
         let mut coroutine = coroutine;
-        coroutine.run(&self.scheduler_context);
+        try!(coroutine.run(&self.scheduler_context));
+
         if !coroutine.terminated() {
-            let event_loop_registration = coroutine
-                .event_loop_registration
-                .take()
-                .expect("Coros internal error: non-terminated state without callback");
-            event_loop_registration.call_box((coroutine, &mut self.mio_event_loop, &mut self.blocked_coroutines));
+            match coroutine.event_loop_registration.take() {
+                Some(event_loop_registration) => {
+                    event_loop_registration.call_box((
+                        coroutine,
+                        &mut self.mio_event_loop,
+                        &mut self.blocked_coroutines
+                    ));
+                },
+                None => return Err(CorosError::InvalidCoroutineNoCallback),
+            }
         }
+
+        Ok(())
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<()> {
         'event_loop:
         while !self.ready_to_shutdown() {
             self.move_received_work_onto_queue();
             let raw_self_ptr: *mut ThreadScheduler = self;
-            self.mio_event_loop
-                .run_once(unsafe { &mut *raw_self_ptr }, Some(10))
-                .ok()
-                .expect("Coros internal error: error running mio event loop");
+            try!(self.mio_event_loop.run_once(unsafe { &mut *raw_self_ptr }, Some(10)));
 
-            match self.work_provider.pop() {
+            let work_result = match self.work_provider.pop() {
                 Some(coroutine) => self.run_coroutine(coroutine),
                 None => {
-                    if let Some(coroutine) = self.stolen_work() {
-                        self.run_coroutine(coroutine);
+                    match self.stolen_work() {
+                        Some(coroutine) => self.run_coroutine(coroutine),
+                        None => Ok(()),
                     }
                 },
-            }
+            };
+
+            try!(work_result);
         };
+
+        Ok(())
     }
 
     fn ready_to_shutdown(&mut self) -> bool {

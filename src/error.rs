@@ -2,6 +2,7 @@ use std::error::{
     Error,
 };
 use std::fmt;
+use std::io::Error as IoError;
 use std::sync::{
     PoisonError,
     RwLockReadGuard,
@@ -9,6 +10,7 @@ use std::sync::{
     mpsc,
 };
 
+use context::error::ContextError;
 use mio::NotifyError;
 use mio::Token;
 use scoped_threadpool::Pool as ThreadPool;
@@ -16,8 +18,11 @@ use scoped_threadpool::Pool as ThreadPool;
 #[derive(Debug)]
 pub enum CorosError {
     CoroutineChannelSendError,
+    InvalidCoroutineContext(ContextError),
+    InvalidCoroutineNoCallback,
     InvalidCoroutineNoContext,
     InvalidThreadForSpawn(u32, u32),
+    MioIoError(IoError),
     NotifyError(NotifyError<Token>),
     RecvError(mpsc::RecvError),
     ThreadPoolReadLockPoisoned,
@@ -30,12 +35,17 @@ impl CorosError {
             CorosError::CoroutineChannelSendError => {
                 "Cannot send message via channel to a finshed coroutine"
             },
+            CorosError::InvalidCoroutineContext(ref err) => err.description(),
+            CorosError::InvalidCoroutineNoCallback => {
+                "Coroutine in invalid state, has no execution callback"
+            },
             CorosError::InvalidCoroutineNoContext => {
                 "Coroutine attempting to run in invalid state, has no execution context"
             },
             CorosError::InvalidThreadForSpawn(_, _) => {
                 "Index of thread for coroutine spawn greater then thread count"
             },
+            CorosError::MioIoError(ref err) => err.description(),
             CorosError::NotifyError(ref err) => err.description(),
             CorosError::RecvError(ref err) => err.description(),
             CorosError::ThreadPoolReadLockPoisoned => {
@@ -56,8 +66,11 @@ impl Error for CorosError {
     fn cause(&self) -> Option<&Error> {
         match *self {
             CorosError::CoroutineChannelSendError => None,
+            CorosError::InvalidCoroutineContext(ref err) => Some(err),
+            CorosError::InvalidCoroutineNoCallback => None,
             CorosError::InvalidCoroutineNoContext => None,
             CorosError::InvalidThreadForSpawn(_, _) => None,
+            CorosError::MioIoError(ref err) => Some(err),
             CorosError::NotifyError(ref err) => Some(err),
             CorosError::RecvError(ref err) => Some(err),
             CorosError::ThreadPoolReadLockPoisoned => None,
@@ -72,16 +85,22 @@ impl fmt::Display for CorosError {
     }
 }
 
+impl From<ContextError> for CorosError {
+    fn from(err: ContextError) -> CorosError {
+        CorosError::InvalidCoroutineContext(err)
+    }
+}
+
+impl From<IoError> for CorosError {
+    fn from(err: IoError) -> CorosError {
+        CorosError::MioIoError(err)
+    }
+}
+
 impl From<NotifyError<Token>> for CorosError {
     fn from(err: NotifyError<Token>) -> CorosError {
         error!("Error notifying coroutine");
         CorosError::NotifyError(err)
-    }
-}
-
-impl From<mpsc::RecvError> for CorosError {
-    fn from(err: mpsc::RecvError) -> CorosError {
-        CorosError::RecvError(err)
     }
 }
 
@@ -96,5 +115,11 @@ impl<'a> From<PoisonError<RwLockWriteGuard<'a, ThreadPool>>> for CorosError {
     fn from(err: PoisonError<RwLockWriteGuard<'a, ThreadPool>>) -> CorosError {
         error!("Error obtaining thread pool write lock {:?}", err);
         CorosError::ThreadPoolWriteLockPoisoned
+    }
+}
+
+impl From<mpsc::RecvError> for CorosError {
+    fn from(err: mpsc::RecvError) -> CorosError {
+        CorosError::RecvError(err)
     }
 }

@@ -9,6 +9,8 @@ use context::{
 use mio::EventLoop;
 
 use coroutine_blocking_handle::CoroutineBlockingHandle;
+use error::CorosError;
+use Result;
 use thread_scheduler::{
     BlockedCoroutineSlab,
     ThreadScheduler,
@@ -79,17 +81,19 @@ impl Coroutine {
         self.borrow() as *const Coroutine
     }
 
-    pub fn run(&mut self, scheduler_context: &Context) {
-        self.set_context_to_run_coroutine();
-        self.set_context_to_return_to_scheduler(scheduler_context);
+    pub fn run(&mut self, scheduler_context: &Context) -> Result<()> {
+        try!(self.set_context_to_run_coroutine());
+        try!(self.set_context_to_return_to_scheduler(scheduler_context));
         self.state = CoroutineState::Running;
 
         match self.context {
-            None => panic!("Coros internal error: trying to run coroutine without context"),
+            None => return Err(CorosError::InvalidCoroutineNoContext),
             Some(ref context) => {
                 Context::swap(scheduler_context, context);
             },
         }
+
+        Ok(())
     }
 
     pub fn terminated(&self) -> bool {
@@ -103,28 +107,26 @@ impl Coroutine {
     /// argument to the context_init, the pointer back to the calling coroutine,
     /// needs to be updated before coroutine is run in case the coroutine has
     /// been moved.
-    fn set_context_to_run_coroutine(&mut self) {
+    fn set_context_to_run_coroutine(&mut self) -> Result<()> {
         let raw_self_ptr = self.raw_pointer();
 
-        match self.context {
-            None => panic!("Coros internal error: trying to run coroutine without context"),
-            Some(ref mut context) => {
-                context
-                    .set_arg(raw_self_ptr as usize, 0)
-                    .expect("Coros internal error: trying to set arg on context without stack");
-            },
-        }
+        let context = match self.context {
+            None => return Err(CorosError::InvalidCoroutineNoContext),
+            Some(ref mut context) => context,
+        };
+        try!(context.set_arg(raw_self_ptr as usize, 0));
+
+        Ok(())
     }
 
-    fn set_context_to_return_to_scheduler(&mut self, scheduler_context: &Context) {
-        match self.context {
-            None => panic!("Coros internal error: trying to run coroutine without context"),
-            Some(ref mut context) => {
-                let scheduler_context_ptr = scheduler_context.borrow() as *const Context;
-                context
-                    .set_arg(scheduler_context_ptr as usize, 1)
-                    .expect("Coros internal error: trying to set arg on context without stack");
-            },
-        }
+    fn set_context_to_return_to_scheduler(&mut self, scheduler_context: &Context) -> Result<()> {
+        let context = match self.context {
+            None => return Err(CorosError::InvalidCoroutineNoContext),
+            Some(ref mut context) => context,
+        };
+        let scheduler_context_ptr = scheduler_context.borrow() as *const Context;
+        try!(context.set_arg(scheduler_context_ptr as usize, 1));
+
+        Ok(())
     }
 }
