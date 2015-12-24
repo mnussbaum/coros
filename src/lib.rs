@@ -25,4 +25,4 @@ mod pool;
 pub use pool::Pool;
 
 use std::result;
-pub type Result<'a, T> = result::Result<T, CorosError<'a>>;
+pub type Result<T> = result::Result<T, CorosError>;
