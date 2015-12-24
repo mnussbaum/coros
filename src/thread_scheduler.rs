@@ -90,7 +90,7 @@ impl ThreadScheduler {
             self.move_received_work_onto_queue();
             let raw_self_ptr: *mut ThreadScheduler = self;
             self.mio_event_loop
-                .run_once(unsafe { &mut *raw_self_ptr })
+                .run_once(unsafe { &mut *raw_self_ptr }, Some(10))
                 .ok()
                 .expect("Coros internal error: error running mio event loop");
 

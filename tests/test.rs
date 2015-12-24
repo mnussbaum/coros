@@ -99,7 +99,10 @@ fn test_dropping_the_pool_stops_it() {
 fn test_dropping_a_join_handle_joins_it() {
     let pool_name = "a_name".to_string();
     let mut pool = Pool::new(pool_name, 1);
-    let handle = pool.spawn(|_| { std::thread::sleep(StdDuration::from_millis(500)); 1 }, STACK_SIZE).unwrap();
+    let handle = pool.spawn(|_| {
+        std::thread::sleep(StdDuration::from_millis(500));
+        1
+    }, STACK_SIZE).unwrap();
 
     pool.start().unwrap();
 }

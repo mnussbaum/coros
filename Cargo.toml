@@ -18,9 +18,7 @@ rand = "^0.3.10"
 
 [dev-dependencies]
 time = "0.1.32"
-[dev-dependencies.bytes]
-git = "https://github.com/carllerche/bytes"
-rev = "7edb577d0a"
+bytes = "0.3.0"
 
 [dependencies.deque]
 git = "https://github.com/kinghajj/deque.git"
