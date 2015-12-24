@@ -8,6 +8,9 @@ use std::sync::mpsc::{
 use mio::Token;
 use mio::Sender as MioSender;
 
+use error::CorosError;
+use Result as CorosResult;
+
 pub struct BlockedMessage {
     pub mio_sender: MioSender<Token>,
     pub token: Token,
@@ -21,17 +24,19 @@ pub struct CoroutineSender<M: Send> {
 impl<M: Send> CoroutineSender<M> {
     // Is there a way to implement this without blocking while allowing messages to send before
     // notify_sender_of_blocking is called?
-    pub fn send(&self, message: M) {
-        match self.blocked_message_receiver.recv() {
-            Ok(blocked_message) => {
-                blocked_message
-                    .mio_sender
-                    .send(blocked_message.token)
-                    .unwrap(); //TODO: handle errors
-                self.user_message_sender.send(message).unwrap() // TODO: handle errors
-            },
-            Err(e) => panic!("Coros internal error: error setting up channel, {}", e),
+    pub fn send(&self, message: M) -> CorosResult<()> {
+        let blocked_message = try!(self.blocked_message_receiver.recv());
+        try!(
+            blocked_message
+             .mio_sender
+             .send(blocked_message.token)
+        );
+
+        if let Err(_) = self.user_message_sender.send(message) {
+            return Err(CorosError::CoroutineChannelSendError)
         }
+
+        Ok(())
     }
 }
 

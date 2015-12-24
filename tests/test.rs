@@ -209,7 +209,7 @@ fn test_channel_recv() {
     ).unwrap();
 
     pool.start().unwrap();
-    sender.send(1);
+    assert!(sender.send(1).is_ok());
     assert_eq!(1, guard.join().unwrap().unwrap());
     pool.stop().unwrap();
 }

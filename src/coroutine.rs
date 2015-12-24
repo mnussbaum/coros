@@ -80,8 +80,8 @@ impl Coroutine {
     }
 
     pub fn run(&mut self, scheduler_context: &Context) {
-        self.point_context_at_coroutine();
-        self.point_context_at_scheduler_contex(scheduler_context);
+        self.set_context_to_run_coroutine();
+        self.set_context_to_return_to_scheduler(scheduler_context);
         self.state = CoroutineState::Running;
 
         match self.context {
@@ -103,7 +103,7 @@ impl Coroutine {
     /// argument to the context_init, the pointer back to the calling coroutine,
     /// needs to be updated before coroutine is run in case the coroutine has
     /// been moved.
-    fn point_context_at_coroutine(&mut self) {
+    fn set_context_to_run_coroutine(&mut self) {
         let raw_self_ptr = self.raw_pointer();
 
         match self.context {
@@ -116,7 +116,7 @@ impl Coroutine {
         }
     }
 
-    fn point_context_at_scheduler_contex(&mut self, scheduler_context: &Context) {
+    fn set_context_to_return_to_scheduler(&mut self, scheduler_context: &Context) {
         match self.context {
             None => panic!("Coros internal error: trying to run coroutine without context"),
             Some(ref mut context) => {
