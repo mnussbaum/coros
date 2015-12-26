@@ -23,7 +23,7 @@ pub struct CoroutineSender<M: Send> {
 
 impl<M: Send> CoroutineSender<M> {
     // Is there a way to implement this without blocking while allowing messages to send before
-    // notify_sender_of_blocking is called?
+    // recv is called?
     pub fn send(&self, message: M) -> CorosResult<()> {
         let blocked_message = try!(self.blocked_message_receiver.recv());
         try!(
@@ -46,19 +46,8 @@ pub struct CoroutineReceiver<M: Send> {
 }
 
 impl<M: Send> CoroutineReceiver<M> {
-    pub fn notify_sender_of_blocking(&self, mio_sender: MioSender<Token>, token: Token) {
-        let message = BlockedMessage {
-            mio_sender: mio_sender,
-            token: token,
-        };
-        self.blocked_message_sender.send(message).unwrap(); //TODO: handle errors
-    }
-
     pub fn recv(&self) -> Result<M, RecvError> {
-        match self.user_message_receiver.recv() {
-            Ok(message) => Ok(message),
-            Err(err) => Err(err),
-        }
+        self.user_message_receiver.recv()
     }
 }
 
