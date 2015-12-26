@@ -102,7 +102,7 @@ impl Pool {
                 work_provider,
                 work_receiver,
                 work_stealers.clone(),
-            );
+            ).unwrap();
             thread_schedulers.push(thread_scheduler);
         }
 

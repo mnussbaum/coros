@@ -61,17 +61,17 @@ impl ThreadScheduler {
         work_provider: Worker<Coroutine>,
         work_receiver: Receiver<Coroutine>,
         work_stealers: Vec<Stealer<Coroutine>>,
-    ) -> ThreadScheduler {
-        ThreadScheduler {
+    ) -> Result<ThreadScheduler> {
+        Ok(ThreadScheduler {
             blocked_coroutines: Slab::new(1024 * 64),
             is_shutting_down: false,
-            mio_event_loop: EventLoop::new().unwrap(),
+            mio_event_loop: try!(EventLoop::new()),
             scheduler_context: Context::empty(),
             shutdown_receiver: shutdown_receiver,
             work_provider: work_provider,
             work_receiver: work_receiver,
             work_stealers: Mutex::new(work_stealers),
-        }
+        })
     }
 
     fn run_coroutine(&mut self, coroutine: Coroutine) -> Result<()> {
