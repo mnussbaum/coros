@@ -43,7 +43,7 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
     unreachable!("Coros internal error: execution should never reach here");
 }
 
-pub type EventLoopRegistrationCallback = Box<FnBox(Coroutine, &mut EventLoop<ThreadScheduler>, &mut BlockedCoroutineSlab)>;
+pub type EventLoopRegistrationCallback = Box<FnBox(Coroutine, &mut EventLoop<ThreadScheduler>, &mut BlockedCoroutineSlab) -> Result<()>>;
 
 pub struct Coroutine {
     pub context: Option<Context>,

@@ -36,15 +36,15 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
-                                 blocked_coroutines: &mut BlockedCoroutineSlab| {
-            let token = blocked_coroutines
-                .insert((coroutine, None))
-                .ok()
-                .expect("Coros internal error: error inserting coroutine into slab");
+                                 blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
+            let token = match blocked_coroutines.insert((coroutine, None)) {
+                Ok(token) => token,
+                Err(_) => return Err(CorosError::SlabFullError),
+            };
 
-            mio_event_loop
-                .timeout_ms(token, ms)
-                .expect("Coros internal error: ran out of slab");
+            try!(mio_event_loop.timeout_ms(token, ms));
+
+            Ok(())
         };
 
         self.suspend_with_callback(Box::new(mio_callback))
@@ -56,17 +56,22 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
-                                 blocked_coroutines: &mut BlockedCoroutineSlab| {
-            let token = blocked_coroutines
-                .insert((coroutine, None))
-                .ok()
-                .expect("Coros internal error: error inserting coroutine into slab");
+                                 blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
+            let token = match blocked_coroutines.insert((coroutine, None)) {
+                Ok(token) => token,
+                Err(_) => return Err(CorosError::SlabFullError),
+            };
             let mio_sender = mio_event_loop.channel();
             let message = BlockedMessage {
                 mio_sender: mio_sender,
                 token: token,
             };
-            blocked_message_sender.send(message).unwrap(); //TODO: handle errors, encapsulate
+
+            if let Err(_) = blocked_message_sender.send(message) {
+                return Err(CorosError::CoroutineBlockSendError)
+            }
+
+            Ok(())
         };
 
         try!(self.suspend_with_callback(Box::new(mio_callback)));
@@ -83,17 +88,21 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
-                                 blocked_coroutines: &mut BlockedCoroutineSlab| {
-            let token = blocked_coroutines
-                .insert((coroutine, Some(awoken_for_eventset_tx)))
-                .ok()
-                .expect("Coros internal error: error inserting coroutine into slab");
-            mio_event_loop.register(
-                unsafe { &*raw_io_ptr },
-                token,
-                interest,
-                opt,
-            ).unwrap(); //TODO: error handling
+                                 blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
+            let token = match blocked_coroutines.insert((coroutine, Some(awoken_for_eventset_tx))) {
+                Ok(token) => token,
+                Err(_) => return Err(CorosError::SlabFullError),
+            };
+            try!(
+                mio_event_loop.register(
+                    unsafe { &*raw_io_ptr },
+                    token,
+                    interest,
+                    opt,
+                )
+            );
+
+            Ok(())
         };
 
         try!(self.suspend_with_callback(Box::new(mio_callback)));
@@ -109,15 +118,15 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
-                                 blocked_coroutines: &mut BlockedCoroutineSlab| {
-            let token = blocked_coroutines
-                .insert((coroutine, None))
-                .ok()
-                .expect("Coros internal error: error inserting coroutine into slab");
-            mio_event_loop.deregister(unsafe { &*raw_io_ptr }).unwrap(); //TODO: error handling
-            mio_event_loop
-                .timeout_ms(token, 0)
-                .expect("Coros internal error: ran out of slab");
+                                 blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
+            let token = match blocked_coroutines.insert((coroutine, None)) {
+                Ok(token) => token,
+                Err(_) => return Err(CorosError::SlabFullError),
+            };
+            try!(mio_event_loop.deregister(unsafe { &*raw_io_ptr }));
+            try!(mio_event_loop.timeout_ms(token, 0));
+
+            Ok(())
         };
 
         Ok(try!(self.suspend_with_callback(Box::new(mio_callback))))
@@ -132,17 +141,21 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
-                                 blocked_coroutines: &mut BlockedCoroutineSlab| {
-            let token = blocked_coroutines
-                .insert((coroutine, Some(awoken_for_eventset_tx)))
-                .ok()
-                .expect("Coros internal error: error inserting coroutine into slab");
-            mio_event_loop.reregister(
-                unsafe { &*raw_io_ptr },
-                token,
-                interest,
-                opt,
-            ).unwrap(); //TODO: error handling
+                                 blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
+            let token = match blocked_coroutines.insert((coroutine, Some(awoken_for_eventset_tx))) {
+                Ok(token) => token,
+                Err(_) => return Err(CorosError::SlabFullError),
+            };
+            try!(
+                mio_event_loop.reregister(
+                    unsafe { &*raw_io_ptr },
+                    token,
+                    interest,
+                    opt,
+                )
+            );
+
+            Ok(())
         };
 
         try!(self.suspend_with_callback(Box::new(mio_callback)));

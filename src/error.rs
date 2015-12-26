@@ -11,20 +11,26 @@ use std::sync::{
 };
 
 use context::error::ContextError;
-use mio::NotifyError;
-use mio::Token;
+use mio::{
+    NotifyError,
+    Token,
+    TimerError,
+};
 use scoped_threadpool::Pool as ThreadPool;
 
 #[derive(Debug)]
 pub enum CorosError {
+    CoroutineBlockSendError,
     CoroutineChannelSendError,
     InvalidCoroutineContext(ContextError),
     InvalidCoroutineNoCallback,
     InvalidCoroutineNoContext,
     InvalidThreadForSpawn(u32, u32),
     MioIoError(IoError),
+    MioTimerError(TimerError),
     NotifyError(NotifyError<Token>),
     RecvError(mpsc::RecvError),
+    SlabFullError,
     ThreadPoolReadLockPoisoned,
     ThreadPoolWriteLockPoisoned,
 }
@@ -32,6 +38,9 @@ pub enum CorosError {
 impl CorosError {
     pub fn description(&self) -> &str {
         match *self {
+            CorosError::CoroutineBlockSendError => {
+                "Cannot send message to block coroutine"
+            },
             CorosError::CoroutineChannelSendError => {
                 "Cannot send message via channel to a finshed coroutine"
             },
@@ -46,8 +55,12 @@ impl CorosError {
                 "Index of thread for coroutine spawn greater then thread count"
             },
             CorosError::MioIoError(ref err) => err.description(),
+            CorosError::MioTimerError(ref err) => err.description(),
             CorosError::NotifyError(ref err) => err.description(),
             CorosError::RecvError(ref err) => err.description(),
+            CorosError::SlabFullError => {
+                "Error attempting to insert a suspended coroutine into a full slab"
+            }
             CorosError::ThreadPoolReadLockPoisoned => {
                 "Pool's thread pool read lock poisoned"
             },
@@ -65,14 +78,17 @@ impl Error for CorosError {
 
     fn cause(&self) -> Option<&Error> {
         match *self {
+            CorosError::CoroutineBlockSendError => None,
             CorosError::CoroutineChannelSendError => None,
             CorosError::InvalidCoroutineContext(ref err) => Some(err),
             CorosError::InvalidCoroutineNoCallback => None,
             CorosError::InvalidCoroutineNoContext => None,
             CorosError::InvalidThreadForSpawn(_, _) => None,
             CorosError::MioIoError(ref err) => Some(err),
+            CorosError::MioTimerError(ref err) => Some(err),
             CorosError::NotifyError(ref err) => Some(err),
             CorosError::RecvError(ref err) => Some(err),
+            CorosError::SlabFullError => None,
             CorosError::ThreadPoolReadLockPoisoned => None,
             CorosError::ThreadPoolWriteLockPoisoned => None,
         }
@@ -94,6 +110,12 @@ impl From<ContextError> for CorosError {
 impl From<IoError> for CorosError {
     fn from(err: IoError) -> CorosError {
         CorosError::MioIoError(err)
+    }
+}
+
+impl From<TimerError> for CorosError {
+    fn from(err: TimerError) -> CorosError {
+        CorosError::MioTimerError(err)
     }
 }
 

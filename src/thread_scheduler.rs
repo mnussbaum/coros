@@ -80,13 +80,13 @@ impl ThreadScheduler {
 
         if !coroutine.terminated() {
             match coroutine.event_loop_registration.take() {
-                Some(event_loop_registration) => {
+                Some(event_loop_registration) => try!(
                     event_loop_registration.call_box((
                         coroutine,
                         &mut self.mio_event_loop,
                         &mut self.blocked_coroutines
-                    ));
-                },
+                    ))
+                ),
                 None => return Err(CorosError::InvalidCoroutineNoCallback),
             }
         }
