@@ -153,7 +153,7 @@ fn test_sleep_ms() {
     let mut guard1 = pool.spawn_with_thread_index(|_| { 1 }, STACK_SIZE, 0).unwrap();
     let mut guard2 = pool.spawn_with_thread_index(
         |coroutine_handle: &mut CoroutineBlockingHandle| {
-            coroutine_handle.sleep_ms(500);
+            coroutine_handle.sleep_ms(500).unwrap();
             2
         },
         STACK_SIZE,
@@ -181,11 +181,11 @@ fn test_sleeping_coroutine_is_not_awoken_for_io() {
                 &reader,
                 EventSet::readable(),
                 PollOpt::level(),
-            );
+            ).unwrap();
             let start_time = now();
-            coroutine_handle.sleep_ms(500);
+            coroutine_handle.sleep_ms(500).unwrap();
             assert!((now() - start_time) >= Duration::milliseconds(400));
-            coroutine_handle.deregister(&reader);
+            coroutine_handle.deregister(&reader).unwrap();
         },
         STACK_SIZE,
     ).unwrap();
@@ -226,7 +226,7 @@ fn test_readable_io() {
                 &reader,
                 EventSet::readable(),
                 PollOpt::edge(),
-            );
+            ).unwrap();
             let mut result_buf = Vec::<u8>::new();
             reader.try_read_buf(&mut result_buf).unwrap();
 
@@ -255,7 +255,7 @@ fn test_eventset_of_result_is_returned_by_register() {
                 &reader,
                 EventSet::readable(),
                 PollOpt::edge(),
-            );
+            ).unwrap();
             assert_eq!(result_eventset, EventSet::readable());
 
             let mut result_buf = Vec::<u8>::new();
@@ -286,7 +286,7 @@ fn test_writable_io() {
                 &writer,
                 EventSet::writable(),
                 PollOpt::edge(),
-            );
+            ).unwrap();
             assert_eq!(result_eventset, EventSet::writable());
 
             writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
@@ -318,15 +318,15 @@ fn test_deregister() {
                 &reader1,
                 EventSet::readable(),
                 PollOpt::level(),
-            );
+            ).unwrap();
 
-            coroutine_handle.deregister(&reader1);
+            coroutine_handle.deregister(&reader1).unwrap();
 
             let awoken_for_eventset = coroutine_handle.register(
                 &writer2,
                 EventSet::writable(),
                 PollOpt::edge(),
-            );
+            ).unwrap();
             assert_eq!(awoken_for_eventset, EventSet::writable());
 
             writer2.try_write_buf(&mut SliceBuf::wrap("pong".as_bytes())).unwrap();
@@ -359,20 +359,20 @@ fn test_reregister() {
                 &reader,
                 EventSet::readable(),
                 PollOpt::level(),
-            );
-            coroutine_handle.deregister(&reader);
+            ).unwrap();
+            coroutine_handle.deregister(&reader).unwrap();
             let result_eventset = coroutine_handle.reregister(
                 &reader,
                 EventSet::readable(),
                 PollOpt::level(),
-            );
+            ).unwrap();
             assert_eq!(result_eventset, EventSet::readable());
 
             let mut result_buf = Vec::<u8>::new();
             reader.try_read_buf(&mut result_buf).unwrap();
 
             let read = std::str::from_utf8(&result_buf).unwrap().to_string();
-            coroutine_handle.deregister(&reader);
+            coroutine_handle.deregister(&reader).unwrap();
 
             read
         },
@@ -392,7 +392,7 @@ fn test_blocked_coroutines_are_waited_on_by_pool_stop() {
 
     let mut guard = pool.spawn(
         move |coroutine_handle: &mut CoroutineBlockingHandle| {
-            coroutine_handle.sleep_ms(500);
+            coroutine_handle.sleep_ms(500).unwrap();
             1
         },
         STACK_SIZE,

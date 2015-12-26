@@ -1,7 +1,4 @@
-use std::sync::mpsc::{
-    channel,
-    RecvError,
-};
+use std::sync::mpsc::channel;
 
 use mio::{
     EventLoop,
@@ -21,6 +18,8 @@ use coroutine_channel::{
     BlockedMessage,
     CoroutineReceiver,
 };
+use error::CorosError;
+use Result;
 use thread_scheduler::{
     BlockedCoroutineSlab,
     ThreadScheduler,
@@ -32,7 +31,7 @@ pub struct CoroutineBlockingHandle<'a> {
 }
 
 impl<'a> CoroutineBlockingHandle<'a> {
-    pub fn sleep_ms(&mut self, ms: u64) {
+    pub fn sleep_ms(&mut self, ms: u64) -> Result<()> {
         self.coroutine.state = CoroutineState::Blocked;
 
         let mio_callback = move |coroutine: Coroutine,
@@ -48,10 +47,10 @@ impl<'a> CoroutineBlockingHandle<'a> {
                 .expect("Coros internal error: ran out of slab");
         };
 
-        self.suspend_with_callback(Box::new(mio_callback));
+        self.suspend_with_callback(Box::new(mio_callback))
     }
 
-    pub fn recv<M: Send>(&mut self, receiver: &CoroutineReceiver<M>) -> Result<M, RecvError> {
+    pub fn recv<M: Send>(&mut self, receiver: &CoroutineReceiver<M>) -> Result<M> {
         let blocked_message_sender = receiver.blocked_message_sender.clone();
         self.coroutine.state = CoroutineState::Blocked;
 
@@ -70,12 +69,12 @@ impl<'a> CoroutineBlockingHandle<'a> {
             blocked_message_sender.send(message).unwrap(); //TODO: handle errors, encapsulate
         };
 
-        self.suspend_with_callback(Box::new(mio_callback));
+        try!(self.suspend_with_callback(Box::new(mio_callback)));
 
-        receiver.recv()
+        Ok(try!(receiver.recv()))
     }
 
-    pub fn register<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt) -> EventSet
+    pub fn register<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt) -> Result<EventSet>
         where E: Evented + 'static
     {
         self.coroutine.state = CoroutineState::Blocked;
@@ -97,14 +96,12 @@ impl<'a> CoroutineBlockingHandle<'a> {
             ).unwrap(); //TODO: error handling
         };
 
-        self.suspend_with_callback(Box::new(mio_callback));
+        try!(self.suspend_with_callback(Box::new(mio_callback)));
 
-        awoken_for_eventset_rx
-            .try_recv()
-            .expect("Coros internal: awoke from IO without eventset")
+        Ok(try!(awoken_for_eventset_rx.recv()))
     }
 
-    pub fn deregister<E: ?Sized>(&mut self, io: &E)
+    pub fn deregister<E: ?Sized>(&mut self, io: &E) -> Result<()>
         where E: Evented + 'static
     {
         self.coroutine.state = CoroutineState::Blocked;
@@ -123,10 +120,10 @@ impl<'a> CoroutineBlockingHandle<'a> {
                 .expect("Coros internal error: ran out of slab");
         };
 
-        self.suspend_with_callback(Box::new(mio_callback));
+        Ok(try!(self.suspend_with_callback(Box::new(mio_callback))))
     }
 
-    pub fn reregister<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt) -> EventSet
+    pub fn reregister<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt) -> Result<EventSet>
         where E: Evented + 'static
     {
         self.coroutine.state = CoroutineState::Blocked;
@@ -148,21 +145,21 @@ impl<'a> CoroutineBlockingHandle<'a> {
             ).unwrap(); //TODO: error handling
         };
 
-        self.suspend_with_callback(Box::new(mio_callback));
+        try!(self.suspend_with_callback(Box::new(mio_callback)));
 
-        awoken_for_eventset_rx
-            .try_recv()
-            .expect("Coros internal: awoke from IO without eventset")
+        Ok(try!(awoken_for_eventset_rx.recv()))
     }
 
-    fn suspend_with_callback(&mut self, event_loop_registration: EventLoopRegistrationCallback) {
+    fn suspend_with_callback(&mut self, event_loop_registration: EventLoopRegistrationCallback) -> Result<()> {
         self.coroutine.event_loop_registration = Some(event_loop_registration);
 
         match self.coroutine.context {
             Some(ref context) => {
                 Context::swap(context, self.scheduler_context);
+
+                Ok(())
             },
-            None => panic!("Coros internal error: block coroutine without context"),
-        };
+            None => Err(CorosError::InvalidCoroutineNoContext),
+        }
     }
 }
