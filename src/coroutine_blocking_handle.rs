@@ -20,9 +20,9 @@ use coroutine_channel::{
 };
 use error::CorosError;
 use Result;
-use thread_scheduler::{
+use scheduler::{
     BlockedCoroutineSlab,
-    ThreadScheduler,
+    Scheduler,
 };
 
 pub struct CoroutineBlockingHandle<'a> {
@@ -35,7 +35,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
         self.coroutine.state = CoroutineState::Blocked;
 
         let mio_callback = move |coroutine: Coroutine,
-                                 mio_event_loop: &mut EventLoop<ThreadScheduler>,
+                                 mio_event_loop: &mut EventLoop<Scheduler>,
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
             let token = match blocked_coroutines.insert((coroutine, None)) {
                 Ok(token) => token,
@@ -55,7 +55,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
         self.coroutine.state = CoroutineState::Blocked;
 
         let mio_callback = move |coroutine: Coroutine,
-                                 mio_event_loop: &mut EventLoop<ThreadScheduler>,
+                                 mio_event_loop: &mut EventLoop<Scheduler>,
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
             let token = match blocked_coroutines.insert((coroutine, None)) {
                 Ok(token) => token,
@@ -87,7 +87,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
         let raw_io_ptr: *const E = io as *const E;
 
         let mio_callback = move |coroutine: Coroutine,
-                                 mio_event_loop: &mut EventLoop<ThreadScheduler>,
+                                 mio_event_loop: &mut EventLoop<Scheduler>,
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
             let token = match blocked_coroutines.insert((coroutine, Some(eventset_tx))) {
                 Ok(token) => token,
@@ -117,7 +117,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
         let raw_io_ptr: *const E = io as *const E;
 
         let mio_callback = move |coroutine: Coroutine,
-                                 mio_event_loop: &mut EventLoop<ThreadScheduler>,
+                                 mio_event_loop: &mut EventLoop<Scheduler>,
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
             let token = match blocked_coroutines.insert((coroutine, None)) {
                 Ok(token) => token,
@@ -140,7 +140,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
         let raw_io_ptr: *const E = io as *const E;
 
         let mio_callback = move |coroutine: Coroutine,
-                                 mio_event_loop: &mut EventLoop<ThreadScheduler>,
+                                 mio_event_loop: &mut EventLoop<Scheduler>,
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
             let token = match blocked_coroutines.insert((coroutine, Some(eventset_tx))) {
                 Ok(token) => token,

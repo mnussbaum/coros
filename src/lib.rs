@@ -20,7 +20,7 @@ pub use coroutine_channel::{
     CoroutineSender,
     coroutine_channel,
 };
-mod thread_scheduler;
+mod scheduler;
 mod pool;
 pub use pool::Pool;
 

@@ -28,12 +28,12 @@ use coroutine::{
 };
 use coroutine_blocking_handle::CoroutineBlockingHandle;
 use error::CorosError;
-use thread_scheduler::ThreadScheduler;
+use scheduler::Scheduler;
 
-struct ThreadSchedulerComponents {
+struct SchedulerComponents {
     shutdown_txs: Vec<Sender<()>>,
     result_rx: Receiver<Result<()>>,
-    thread_schedulers: Vec<ThreadScheduler>,
+    schedulers: Vec<Scheduler>,
     work_txs: Vec<Sender<Coroutine>>,
 }
 
@@ -43,8 +43,8 @@ pub struct Pool {
     shutdown_txs: Vec<Sender<()>>,
     thread_count: u32,
     thread_pool: RwLock<ThreadPool>,
-    thread_scheduler_result_rx: Receiver<Result<()>>,
-    thread_schedulers: Option<Vec<ThreadScheduler>>,
+    scheduler_result_rx: Receiver<Result<()>>,
+    schedulers: Option<Vec<Scheduler>>,
     work_txs: Vec<Sender<Coroutine>>,
 }
 
@@ -62,22 +62,22 @@ impl fmt::Debug for Pool {
 
 impl Pool {
     pub fn new(name: String, thread_count: u32) -> Result<Pool> {
-        let thread_scheduler_components = try!(Pool::create_thread_schedulers(thread_count));
+        let scheduler_components = try!(Pool::create_schedulers(thread_count));
         Ok(Pool {
             is_running: false,
             name: name,
-            shutdown_txs: thread_scheduler_components.shutdown_txs,
+            shutdown_txs: scheduler_components.shutdown_txs,
             thread_count: thread_count,
             thread_pool: RwLock::new(ThreadPool::new(thread_count)),
-            thread_scheduler_result_rx: thread_scheduler_components.result_rx,
-            thread_schedulers: Some(thread_scheduler_components.thread_schedulers),
-            work_txs: thread_scheduler_components.work_txs,
+            scheduler_result_rx: scheduler_components.result_rx,
+            schedulers: Some(scheduler_components.schedulers),
+            work_txs: scheduler_components.work_txs,
         })
     }
 
-    fn create_thread_schedulers(thread_count: u32) -> Result<ThreadSchedulerComponents> {
+    fn create_schedulers(thread_count: u32) -> Result<SchedulerComponents> {
         let thread_count: usize = thread_count as usize;
-        let mut thread_schedulers: Vec<ThreadScheduler> = Vec::with_capacity(thread_count);
+        let mut schedulers: Vec<Scheduler> = Vec::with_capacity(thread_count);
         let mut work_stealers: Vec<Stealer<Coroutine>> = Vec::with_capacity(thread_count);
         let mut work_providers: Vec<Worker<Coroutine>> = Vec::with_capacity(thread_count);
         let mut work_txs: Vec<Sender<Coroutine>> = Vec::with_capacity(thread_count);
@@ -95,20 +95,20 @@ impl Pool {
             let (work_tx, work_rx) = channel();
             work_txs.push(work_tx);
 
-            let thread_scheduler = try!(ThreadScheduler::new(
+            let scheduler = try!(Scheduler::new(
                 result_tx.clone(),
                 shutdown_rx,
                 work_provider,
                 work_rx,
                 work_stealers.clone(),
             ));
-            thread_schedulers.push(thread_scheduler);
+            schedulers.push(scheduler);
         }
 
-        Ok(ThreadSchedulerComponents {
+        Ok(SchedulerComponents {
             result_rx: result_rx,
             shutdown_txs: shutdown_txs,
-            thread_schedulers: thread_schedulers,
+            schedulers: schedulers,
             work_txs: work_txs,
         })
     }
@@ -170,13 +170,13 @@ impl Pool {
         }
 
         let mut thread_pool =  try!(self.thread_pool.write());
-        let mut thread_schedulers = match self.thread_schedulers.take() {
-            Some(thread_schedulers) => thread_schedulers,
+        let mut schedulers = match self.schedulers.take() {
+            Some(schedulers) => schedulers,
             None => return Err(CorosError::CannotStartPoolWithoutSchedulers),
         };
         thread_pool.scoped(|scoped| {
-            for mut thread_scheduler in thread_schedulers.drain(..) {
-                scoped.execute(move || { thread_scheduler.run() });
+            for mut scheduler in schedulers.drain(..) {
+                scoped.execute(move || { scheduler.run() });
             }
         });
         self.is_running = true;
@@ -199,7 +199,7 @@ impl Pool {
         thread_pool.join_all();
 
         for _ in 0..self.thread_count {
-            if let Err(err) = self.thread_scheduler_result_rx.recv() {
+            if let Err(err) = self.scheduler_result_rx.recv() {
                 errors.push(CorosError::UnableToReceiveThreadShutdownResult(err));
             }
         }

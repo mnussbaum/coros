@@ -25,10 +25,10 @@ use Result;
 
 pub type BlockedCoroutineSlab = Slab<(Coroutine, Option<Sender<EventSet>>)>;
 
-pub struct ThreadScheduler {
+pub struct Scheduler {
     blocked_coroutines: BlockedCoroutineSlab,
     is_shutting_down: bool,
-    mio_event_loop: EventLoop<ThreadScheduler>,
+    mio_event_loop: EventLoop<Scheduler>,
     result_tx: Sender<Result<()>>,
     scheduler_context: Context,
     shutdown_rx: Receiver<()>,
@@ -37,23 +37,23 @@ pub struct ThreadScheduler {
     work_stealers: Mutex<Vec<Stealer<Coroutine>>>,
 }
 
-impl MioHandler for ThreadScheduler {
+impl MioHandler for Scheduler {
     type Timeout = Token;
     type Message = Token;
 
-    fn notify(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token) {
+    fn notify(&mut self, _: &mut EventLoop<Scheduler>, coroutine_token: Token) {
         if let Err(err) = self.enqueue_coroutine(coroutine_token, None) {
           error!("Error notifying coroutine of IO: {:?}", err);
         }
     }
 
-    fn ready(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token, eventset: EventSet) {
+    fn ready(&mut self, _: &mut EventLoop<Scheduler>, coroutine_token: Token, eventset: EventSet) {
         if let Err(err) = self.enqueue_coroutine(coroutine_token, Some(eventset)) {
           error!("Error readying coroutine for IO: {:?}", err);
         }
     }
 
-    fn timeout(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token) {
+    fn timeout(&mut self, _: &mut EventLoop<Scheduler>, coroutine_token: Token) {
         if let Err(err) = self.enqueue_coroutine(coroutine_token, None) {
           error!("Error awakening coroutine after timer alert: {:?}", err);
         }
@@ -62,15 +62,15 @@ impl MioHandler for ThreadScheduler {
 
 const MAX_STOLEN_WORK_BATCH_SIZE: usize = 1000;
 
-impl ThreadScheduler {
+impl Scheduler {
     pub fn new(
         result_tx: Sender<Result<()>>,
         shutdown_rx: Receiver<()>,
         work_provider: Worker<Coroutine>,
         work_rx: Receiver<Coroutine>,
         work_stealers: Vec<Stealer<Coroutine>>,
-    ) -> Result<ThreadScheduler> {
-        Ok(ThreadScheduler {
+    ) -> Result<Scheduler> {
+        Ok(Scheduler {
             blocked_coroutines: Slab::new(1024 * 64),
             is_shutting_down: false,
             mio_event_loop: try!(EventLoop::new()),
@@ -115,7 +115,7 @@ impl ThreadScheduler {
         while !self.ready_to_shutdown() {
             try!(self.move_received_work_onto_queue());
 
-            let raw_self_ptr: *mut ThreadScheduler = self;
+            let raw_self_ptr: *mut Scheduler = self;
             try!(self.mio_event_loop.run_once(unsafe { &mut *raw_self_ptr }, Some(10)));
 
             let work_result = match self.work_provider.pop() {

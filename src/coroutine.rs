@@ -11,9 +11,9 @@ use mio::EventLoop;
 use coroutine_blocking_handle::CoroutineBlockingHandle;
 use error::CorosError;
 use Result;
-use thread_scheduler::{
+use scheduler::{
     BlockedCoroutineSlab,
-    ThreadScheduler,
+    Scheduler,
 };
 
 #[derive(Debug)]
@@ -43,7 +43,7 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
     unreachable!("Coros internal error: execution should never reach here");
 }
 
-pub type EventLoopRegistrationCallback = Box<FnBox(Coroutine, &mut EventLoop<ThreadScheduler>, &mut BlockedCoroutineSlab) -> Result<()>>;
+pub type EventLoopRegistrationCallback = Box<FnBox(Coroutine, &mut EventLoop<Scheduler>, &mut BlockedCoroutineSlab) -> Result<()>>;
 
 pub struct Coroutine {
     pub context: Option<Context>,
