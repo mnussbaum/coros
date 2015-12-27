@@ -50,8 +50,8 @@ impl<'a> CoroutineBlockingHandle<'a> {
         self.suspend_with_callback(Box::new(mio_callback))
     }
 
-    pub fn recv<M: Send>(&mut self, receiver: &CoroutineReceiver<M>) -> Result<M> {
-        let blocked_message_sender = receiver.blocked_message_sender.clone();
+    pub fn recv<M: Send>(&mut self, rx: &CoroutineReceiver<M>) -> Result<M> {
+        let blocked_message_tx = rx.blocked_message_tx.clone();
         self.coroutine.state = CoroutineState::Blocked;
 
         let mio_callback = move |coroutine: Coroutine,
@@ -61,13 +61,13 @@ impl<'a> CoroutineBlockingHandle<'a> {
                 Ok(token) => token,
                 Err(_) => return Err(CorosError::SlabFullError),
             };
-            let mio_sender = mio_event_loop.channel();
+            let mio_tx = mio_event_loop.channel();
             let message = BlockedMessage {
-                mio_sender: mio_sender,
+                mio_tx: mio_tx,
                 token: token,
             };
 
-            if let Err(_) = blocked_message_sender.send(message) {
+            if let Err(_) = blocked_message_tx.send(message) {
                 return Err(CorosError::CoroutineBlockSendError)
             }
 
@@ -76,7 +76,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
         try!(self.suspend_with_callback(Box::new(mio_callback)));
 
-        Ok(try!(receiver.recv()))
+        Ok(try!(rx.recv()))
     }
 
     pub fn register<E: ?Sized>(&mut self, io: &E, interest: EventSet, opt: PollOpt) -> Result<EventSet>

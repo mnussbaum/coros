@@ -6,7 +6,7 @@ use std::sync::mpsc::{
 pub struct CoroutineJoinHandle<T>
     where T: Send + 'static
 {
-    coroutine_result_receiver: Receiver<T>,
+    coroutine_result_rx: Receiver<T>,
     is_joined: bool,
 }
 
@@ -14,10 +14,10 @@ impl<T> CoroutineJoinHandle<T>
     where T: Send + 'static
 {
 
-    pub fn new(coroutine_result_receiver: Receiver<T>) -> CoroutineJoinHandle<T>
+    pub fn new(coroutine_result_rx: Receiver<T>) -> CoroutineJoinHandle<T>
     {
         CoroutineJoinHandle {
-            coroutine_result_receiver: coroutine_result_receiver,
+            coroutine_result_rx: coroutine_result_rx,
             is_joined: false,
         }
     }
@@ -28,7 +28,7 @@ impl<T> CoroutineJoinHandle<T>
         }
 
         self.is_joined = true;
-        match self.coroutine_result_receiver.recv() {
+        match self.coroutine_result_rx.recv() {
             Ok(result) => Ok(Some(result)),
             Err(err) => Err(err),
         }

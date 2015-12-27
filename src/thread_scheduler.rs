@@ -30,9 +30,9 @@ pub struct ThreadScheduler {
     is_shutting_down: bool,
     mio_event_loop: EventLoop<ThreadScheduler>,
     scheduler_context: Context,
-    shutdown_receiver: Receiver<()>,
+    shutdown_rx: Receiver<()>,
     work_provider: Worker<Coroutine>,
-    work_receiver: Receiver<Coroutine>,
+    work_rx: Receiver<Coroutine>,
     work_stealers: Mutex<Vec<Stealer<Coroutine>>>,
 }
 
@@ -63,9 +63,9 @@ const MAX_STOLEN_WORK_BATCH_SIZE: usize = 1000;
 
 impl ThreadScheduler {
     pub fn new(
-        shutdown_receiver: Receiver<()>,
+        shutdown_rx: Receiver<()>,
         work_provider: Worker<Coroutine>,
-        work_receiver: Receiver<Coroutine>,
+        work_rx: Receiver<Coroutine>,
         work_stealers: Vec<Stealer<Coroutine>>,
     ) -> Result<ThreadScheduler> {
         Ok(ThreadScheduler {
@@ -73,9 +73,9 @@ impl ThreadScheduler {
             is_shutting_down: false,
             mio_event_loop: try!(EventLoop::new()),
             scheduler_context: Context::empty(),
-            shutdown_receiver: shutdown_receiver,
+            shutdown_rx: shutdown_rx,
             work_provider: work_provider,
-            work_receiver: work_receiver,
+            work_rx: work_rx,
             work_stealers: Mutex::new(work_stealers),
         })
     }
@@ -125,7 +125,7 @@ impl ThreadScheduler {
     }
 
     fn ready_to_shutdown(&mut self) -> bool {
-        if self.shutdown_receiver.try_recv().is_ok() {
+        if self.shutdown_rx.try_recv().is_ok() {
             self.is_shutting_down = true
         }
 
@@ -145,7 +145,7 @@ impl ThreadScheduler {
 
     pub fn move_received_work_onto_queue(&self) -> Result<()> {
         for _ in 0..MAX_STOLEN_WORK_BATCH_SIZE {
-            match self.work_receiver.try_recv() {
+            match self.work_rx.try_recv() {
                 Ok(work) => self.work_provider.push(work),
                 Err(TryRecvError::Empty) => break,
                 Err(err) => return Err(CorosError::from(err)),
