@@ -23,7 +23,7 @@ const STACK_SIZE: usize = 2 * 1024 * 1024;
 #[test]
 fn test_pool() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     let mut guard = pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
     pool.start().unwrap();
 
@@ -35,7 +35,7 @@ fn test_pool() {
 #[test]
 fn test_spawning_after_start() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     pool.start().unwrap();
 
     let mut guard  = pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
@@ -47,7 +47,7 @@ fn test_spawning_after_start() {
 #[test]
 fn test_spawning_multiple_coroutines() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     pool.start().unwrap();
     let mut guard1 = pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
     let mut guard2 = pool.spawn(|_| { 2 }, STACK_SIZE).unwrap();
@@ -61,7 +61,7 @@ fn test_spawning_multiple_coroutines() {
 #[test]
 fn test_coroutine_panic() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     pool.start().unwrap();
     let mut guard1 = pool.spawn(
         |_| { std::panic::recover(move || { panic!("panic1") }) },
@@ -88,7 +88,7 @@ fn test_coroutine_panic() {
 #[test]
 fn test_dropping_the_pool_stops_it() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
 
     pool.start().unwrap();
     pool.spawn(|_| { 1 }, STACK_SIZE).unwrap().join().unwrap().unwrap();
@@ -98,7 +98,7 @@ fn test_dropping_the_pool_stops_it() {
 #[allow(unused_variables)]
 fn test_dropping_a_join_handle_joins_it() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     let handle = pool.spawn(|_| {
         std::thread::sleep(StdDuration::from_millis(500));
         1
@@ -110,7 +110,7 @@ fn test_dropping_a_join_handle_joins_it() {
 #[test]
 fn test_work_stealing() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 2);
+    let mut pool = Pool::new(pool_name, 2).unwrap();
     let mut guard2 = pool.spawn_with_thread_index(|_| { 2 }, STACK_SIZE, 0).unwrap();
     let mut guard1 = pool.spawn_with_thread_index(|_| { std::thread::sleep(StdDuration::from_millis(500)); 1 }, STACK_SIZE, 0).unwrap();
 
@@ -127,11 +127,11 @@ fn test_work_stealing() {
 #[test]
 fn test_nested_coroutines() {
     let outer_pool_name = "outer".to_string();
-    let mut outer_pool = Pool::new(outer_pool_name, 2);
+    let mut outer_pool = Pool::new(outer_pool_name, 2).unwrap();
     let mut outer_guard = outer_pool.spawn(
         |_| {
             let inner_pool_name = "inner".to_string();
-            let mut inner_pool = Pool::new(inner_pool_name, 2);
+            let mut inner_pool = Pool::new(inner_pool_name, 2).unwrap();
             inner_pool.start().unwrap();
             let mut inner_guard = inner_pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
             let inner_result = inner_guard.join().unwrap().unwrap();
@@ -149,7 +149,7 @@ fn test_nested_coroutines() {
 #[test]
 fn test_sleep_ms() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 2);
+    let mut pool = Pool::new(pool_name, 2).unwrap();
     let mut guard1 = pool.spawn_with_thread_index(|_| { 1 }, STACK_SIZE, 0).unwrap();
     let mut guard2 = pool.spawn_with_thread_index(
         |coroutine_handle: &mut CoroutineBlockingHandle| {
@@ -172,7 +172,7 @@ fn test_sleep_ms() {
 #[test]
 fn test_sleeping_coroutine_is_not_awoken_for_io() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     let (reader, mut writer) = unix::pipe().unwrap();
 
     let mut guard = pool.spawn(
@@ -199,7 +199,7 @@ fn test_sleeping_coroutine_is_not_awoken_for_io() {
 #[test]
 fn test_channel_recv() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     let (sender, receiver) = coroutine_channel::<u8>();
     let mut guard = pool.spawn(
         move |coroutine_handle: &mut CoroutineBlockingHandle| {
@@ -217,7 +217,7 @@ fn test_channel_recv() {
 #[test]
 fn test_readable_io() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     let (mut reader, mut writer) = unix::pipe().unwrap();
 
     let mut guard = pool.spawn(
@@ -246,7 +246,7 @@ fn test_readable_io() {
 #[test]
 fn test_eventset_of_result_is_returned_by_register() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     let (mut reader, mut writer) = unix::pipe().unwrap();
 
     let mut guard = pool.spawn(
@@ -277,7 +277,7 @@ fn test_eventset_of_result_is_returned_by_register() {
 #[test]
 fn test_writable_io() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     let (mut reader, mut writer) = unix::pipe().unwrap();
 
     let mut guard = pool.spawn(
@@ -308,7 +308,7 @@ fn test_writable_io() {
 #[test]
 fn test_deregister() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     let (reader1, mut writer1) = unix::pipe().unwrap();
     let (mut reader2, mut writer2) = unix::pipe().unwrap();
 
@@ -350,7 +350,7 @@ fn test_deregister() {
 #[test]
 fn test_reregister() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
     let (mut reader, mut writer) = unix::pipe().unwrap();
 
     let mut guard = pool.spawn(
@@ -388,7 +388,7 @@ fn test_reregister() {
 #[test]
 fn test_blocked_coroutines_are_waited_on_by_pool_stop() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
 
     let mut guard = pool.spawn(
         move |coroutine_handle: &mut CoroutineBlockingHandle| {
@@ -407,7 +407,7 @@ fn test_blocked_coroutines_are_waited_on_by_pool_stop() {
 #[test]
 fn test_multiple_pool_starts_is_ok() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
 
     let mut guard = pool.spawn(
         move |_: &mut CoroutineBlockingHandle| { 1 },
@@ -423,7 +423,7 @@ fn test_multiple_pool_starts_is_ok() {
 #[test]
 fn test_multiple_pool_stops_is_ok() {
     let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1);
+    let mut pool = Pool::new(pool_name, 1).unwrap();
 
     let mut guard = pool.spawn(
         move |_: &mut CoroutineBlockingHandle| { 1 },

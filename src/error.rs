@@ -1,3 +1,4 @@
+use std::collections::hash_map::HashMap;
 use std::error::{
     Error,
 };
@@ -24,6 +25,7 @@ use coroutine::Coroutine;
 
 #[derive(Debug)]
 pub enum CorosError {
+    CannotStartPoolWithoutSchedulers,
     CoroutineBlockedOnIoAwokenForNotIo,
     CoroutineBlockSendError,
     CoroutineChannelSendError,
@@ -41,13 +43,20 @@ pub enum CorosError {
     SlabFullError,
     ThreadPoolReadLockPoisoned,
     ThreadPoolWriteLockPoisoned,
+    TriedToSpawnCoroutineOnShutdownThread,
     TryRecvError(mpsc::TryRecvError),
+    UnableToReceiveThreadShutdownResult(mpsc::RecvError),
+    UnableToSendThreadShutdownSignal,
+    UncleanShutdown(HashMap<u32, CorosError>),
     WorkStealerMutexPoisoned,
 }
 
 impl CorosError {
     pub fn description(&self) -> &str {
         match *self {
+            CorosError::CannotStartPoolWithoutSchedulers => {
+                "Cannot start pool without schedulers"
+            },
             CorosError::CoroutineBlockedOnIoAwokenForNotIo => {
                 "Coroutine was blocked on IO but awoken for not IO"
             }
@@ -89,7 +98,17 @@ impl CorosError {
             CorosError::ThreadPoolWriteLockPoisoned => {
                 "Pool's thread pool write lock poisoned"
             },
+            CorosError::TriedToSpawnCoroutineOnShutdownThread => {
+                "Pool tried to spawn coroutine onto a native thread that is shutdown"
+            },
             CorosError::TryRecvError(ref err) => err.description(),
+            CorosError::UnableToReceiveThreadShutdownResult(ref err) => err.description(),
+            CorosError::UnableToSendThreadShutdownSignal => {
+                "Error sending shutdown message to native thread"
+            },
+            CorosError::UncleanShutdown(_) => {
+                "Unable to shutdown all native threads"
+            }
             CorosError::WorkStealerMutexPoisoned => {
                 "Thread scheduler work stealer mutex poisoned"
             },
@@ -104,6 +123,7 @@ impl Error for CorosError {
 
     fn cause(&self) -> Option<&Error> {
         match *self {
+            CorosError::CannotStartPoolWithoutSchedulers => None,
             CorosError::CoroutineBlockedOnIoAwokenForNotIo => None,
             CorosError::CoroutineBlockSendError => None,
             CorosError::CoroutineChannelSendError => None,
@@ -121,7 +141,11 @@ impl Error for CorosError {
             CorosError::SlabFullError => None,
             CorosError::ThreadPoolReadLockPoisoned => None,
             CorosError::ThreadPoolWriteLockPoisoned => None,
+            CorosError::TriedToSpawnCoroutineOnShutdownThread => None,
             CorosError::TryRecvError(ref err) => Some(err),
+            CorosError::UnableToReceiveThreadShutdownResult(ref err) => Some(err),
+            CorosError::UnableToSendThreadShutdownSignal => None,
+            CorosError::UncleanShutdown(_) => None,
             CorosError::WorkStealerMutexPoisoned => None,
         }
     }
