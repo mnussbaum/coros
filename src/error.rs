@@ -26,6 +26,7 @@ use coroutine::Coroutine;
 #[derive(Debug)]
 pub enum CorosError {
     CannotStartPoolWithoutSchedulers,
+    CoroutineAlreadyJoined,
     CoroutineBlockedOnIoAwokenForNotIo,
     CoroutineBlockSendError,
     CoroutineChannelSendError,
@@ -57,6 +58,9 @@ impl CorosError {
             CorosError::CannotStartPoolWithoutSchedulers => {
                 "Cannot start pool without schedulers"
             },
+            CorosError::CoroutineAlreadyJoined => {
+                "Coroutine already joined"
+            }
             CorosError::CoroutineBlockedOnIoAwokenForNotIo => {
                 "Coroutine was blocked on IO but awoken for not IO"
             }
@@ -124,6 +128,7 @@ impl Error for CorosError {
     fn cause(&self) -> Option<&Error> {
         match *self {
             CorosError::CannotStartPoolWithoutSchedulers => None,
+            CorosError::CoroutineAlreadyJoined => None,
             CorosError::CoroutineBlockedOnIoAwokenForNotIo => None,
             CorosError::CoroutineBlockSendError => None,
             CorosError::CoroutineChannelSendError => None,

@@ -1,13 +1,13 @@
-use std::sync::mpsc::{
-    Receiver,
-    RecvError,
-};
+use std::sync::mpsc::Receiver;
+
+use error::CorosError;
+use Result;
 
 pub struct CoroutineJoinHandle<T>
     where T: Send + 'static
 {
     coroutine_result_rx: Receiver<T>,
-    is_joined: bool,
+    pub is_joined: bool,
 }
 
 impl<T> CoroutineJoinHandle<T>
@@ -22,23 +22,12 @@ impl<T> CoroutineJoinHandle<T>
         }
     }
 
-    pub fn join(&mut self) -> Result<Option<T>, RecvError> {
+    pub fn join(&mut self) -> Result<T> {
         if self.is_joined {
-            return Ok(None)
+            return Err(CorosError::CoroutineAlreadyJoined)
         }
-
         self.is_joined = true;
-        match self.coroutine_result_rx.recv() {
-            Ok(result) => Ok(Some(result)),
-            Err(err) => Err(err),
-        }
-    }
-}
 
-impl<T> Drop for CoroutineJoinHandle<T>
-    where T: Send + 'static
-{
-    fn drop(&mut self) {
-        self.join().unwrap();
+        Ok(try!(self.coroutine_result_rx.recv()))
     }
 }

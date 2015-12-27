@@ -27,7 +27,7 @@ fn test_pool() {
     let mut guard = pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
     pool.start().unwrap();
 
-    assert_eq!(1, guard.join().unwrap().unwrap());
+    assert_eq!(1, guard.join().unwrap());
 
     pool.stop().unwrap();
 }
@@ -39,7 +39,7 @@ fn test_spawning_after_start() {
     pool.start().unwrap();
 
     let mut guard  = pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
-    assert_eq!(1, guard.join().unwrap().unwrap());
+    assert_eq!(1, guard.join().unwrap());
 
     pool.stop().unwrap();
 }
@@ -52,8 +52,8 @@ fn test_spawning_multiple_coroutines() {
     let mut guard1 = pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
     let mut guard2 = pool.spawn(|_| { 2 }, STACK_SIZE).unwrap();
 
-    assert_eq!(1, guard1.join().unwrap().unwrap());
-    assert_eq!(2, guard2.join().unwrap().unwrap());
+    assert_eq!(1, guard1.join().unwrap());
+    assert_eq!(2, guard2.join().unwrap());
 
     pool.stop().unwrap();
 }
@@ -76,10 +76,10 @@ fn test_coroutine_panic() {
         STACK_SIZE,
     ).unwrap();
     let mut guard5 = pool.spawn(|_| { 5 }, STACK_SIZE).unwrap();
-    assert!(guard1.join().unwrap().unwrap().is_err());
-    assert!(guard2.join().unwrap().unwrap().is_err());
-    assert_eq!(4, guard4.join().unwrap().unwrap().unwrap());
-    assert_eq!(5, guard5.join().unwrap().unwrap());
+    assert!(guard1.join().unwrap().is_err());
+    assert!(guard2.join().unwrap().is_err());
+    assert_eq!(4, guard4.join().unwrap().unwrap());
+    assert_eq!(5, guard5.join().unwrap());
 
     pool.stop().unwrap();
     assert!(true);
@@ -91,20 +91,7 @@ fn test_dropping_the_pool_stops_it() {
     let mut pool = Pool::new(pool_name, 1).unwrap();
 
     pool.start().unwrap();
-    pool.spawn(|_| { 1 }, STACK_SIZE).unwrap().join().unwrap().unwrap();
-}
-
-#[test]
-#[allow(unused_variables)]
-fn test_dropping_a_join_handle_joins_it() {
-    let pool_name = "a_name".to_string();
-    let mut pool = Pool::new(pool_name, 1).unwrap();
-    let handle = pool.spawn(|_| {
-        std::thread::sleep(StdDuration::from_millis(500));
-        1
-    }, STACK_SIZE).unwrap();
-
-    pool.start().unwrap();
+    pool.spawn(|_| { 1 }, STACK_SIZE).unwrap().join().unwrap();
 }
 
 #[test]
@@ -116,10 +103,10 @@ fn test_work_stealing() {
 
     let start_time = now();
     pool.start().unwrap();
-    assert_eq!(2, guard2.join().unwrap().unwrap());
+    assert_eq!(2, guard2.join().unwrap());
 
     assert!((now() - start_time) < Duration::milliseconds(500));
-    assert_eq!(1, guard1.join().unwrap().unwrap());
+    assert_eq!(1, guard1.join().unwrap());
     assert!((now() - start_time) >= Duration::milliseconds(500));
     pool.stop().unwrap();
 }
@@ -134,7 +121,7 @@ fn test_nested_coroutines() {
             let mut inner_pool = Pool::new(inner_pool_name, 2).unwrap();
             inner_pool.start().unwrap();
             let mut inner_guard = inner_pool.spawn(|_| { 1 }, STACK_SIZE).unwrap();
-            let inner_result = inner_guard.join().unwrap().unwrap();
+            let inner_result = inner_guard.join().unwrap();
             inner_pool.stop().unwrap();
             inner_result
         },
@@ -142,7 +129,7 @@ fn test_nested_coroutines() {
     ).unwrap();
 
     outer_pool.start().unwrap();
-    assert_eq!(1, outer_guard.join().unwrap().unwrap());
+    assert_eq!(1, outer_guard.join().unwrap());
     outer_pool.stop().unwrap();
 }
 
@@ -162,9 +149,9 @@ fn test_sleep_ms() {
 
     let start_time = now();
     pool.start().unwrap();
-    assert_eq!(1, guard1.join().unwrap().unwrap());
+    assert_eq!(1, guard1.join().unwrap());
     assert!((now() - start_time) < Duration::milliseconds(500));
-    assert_eq!(2, guard2.join().unwrap().unwrap());
+    assert_eq!(2, guard2.join().unwrap());
     assert!((now() - start_time) >= Duration::milliseconds(500));
     pool.stop().unwrap();
 }
@@ -192,7 +179,7 @@ fn test_sleeping_coroutine_is_not_awoken_for_io() {
 
     pool.start().unwrap();
     writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
-    guard.join().unwrap().unwrap();
+    guard.join().unwrap();
     pool.stop().unwrap();
 }
 
@@ -210,7 +197,7 @@ fn test_channel_recv() {
 
     pool.start().unwrap();
     assert!(sender.send(1).is_ok());
-    assert_eq!(1, guard.join().unwrap().unwrap());
+    assert_eq!(1, guard.join().unwrap());
     pool.stop().unwrap();
 }
 
@@ -239,7 +226,7 @@ fn test_readable_io() {
 
 
     pool.start().unwrap();
-    assert_eq!("ping", guard.join().unwrap().unwrap());
+    assert_eq!("ping", guard.join().unwrap());
     pool.stop().unwrap();
 }
 
@@ -270,7 +257,7 @@ fn test_eventset_of_result_is_returned_by_register() {
 
 
     pool.start().unwrap();
-    assert_eq!("ping", guard.join().unwrap().unwrap());
+    assert_eq!("ping", guard.join().unwrap());
     pool.stop().unwrap();
 }
 
@@ -294,7 +281,7 @@ fn test_writable_io() {
         STACK_SIZE,
     ).unwrap();
     pool.start().unwrap();
-    guard.join().unwrap().unwrap();
+    guard.join().unwrap();
 
     let mut result_buf = Vec::<u8>::new();
     reader.try_read_buf(&mut result_buf).unwrap();
@@ -337,7 +324,7 @@ fn test_deregister() {
     pool.start().unwrap();
     writer1.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
 
-    guard.join().unwrap().unwrap();
+    guard.join().unwrap();
 
     let mut read_result_buf = Vec::<u8>::new();
     reader2.try_read_buf(&mut read_result_buf).unwrap();
@@ -381,7 +368,7 @@ fn test_reregister() {
 
     pool.start().unwrap();
     writer.try_write_buf(&mut SliceBuf::wrap("ping".as_bytes())).unwrap();
-    assert_eq!(guard.join().unwrap().unwrap(), "ping");
+    assert_eq!(guard.join().unwrap(), "ping");
     pool.stop().unwrap();
 }
 
@@ -401,7 +388,7 @@ fn test_blocked_coroutines_are_waited_on_by_pool_stop() {
     pool.start().unwrap();
     std::thread::sleep(StdDuration::from_millis(100));
     pool.stop().unwrap();
-    assert_eq!(1, guard.join().unwrap().unwrap());
+    assert_eq!(1, guard.join().unwrap());
 }
 
 #[test]
@@ -416,7 +403,7 @@ fn test_multiple_pool_starts_is_ok() {
 
     pool.start().unwrap();
     pool.start().unwrap();
-    assert_eq!(1, guard.join().unwrap().unwrap());
+    assert_eq!(1, guard.join().unwrap());
     pool.stop().unwrap();
 }
 
@@ -431,7 +418,7 @@ fn test_multiple_pool_stops_is_ok() {
     ).unwrap();
 
     pool.start().unwrap();
-    assert_eq!(1, guard.join().unwrap().unwrap());
+    assert_eq!(1, guard.join().unwrap());
     pool.stop().unwrap();
     pool.stop().unwrap();
 }
