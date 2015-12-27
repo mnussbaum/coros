@@ -83,13 +83,13 @@ impl<'a> CoroutineBlockingHandle<'a> {
         where E: Evented + 'static
     {
         self.coroutine.state = CoroutineState::Blocked;
-        let (awoken_for_eventset_tx, awoken_for_eventset_rx) = channel::<EventSet>();
+        let (eventset_tx, eventset_rx) = channel::<EventSet>();
         let raw_io_ptr: *const E = io as *const E;
 
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
-            let token = match blocked_coroutines.insert((coroutine, Some(awoken_for_eventset_tx))) {
+            let token = match blocked_coroutines.insert((coroutine, Some(eventset_tx))) {
                 Ok(token) => token,
                 Err(_) => return Err(CorosError::SlabFullError),
             };
@@ -107,7 +107,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
         try!(self.suspend_with_callback(Box::new(mio_callback)));
 
-        Ok(try!(awoken_for_eventset_rx.recv()))
+        Ok(try!(eventset_rx.recv()))
     }
 
     pub fn deregister<E: ?Sized>(&mut self, io: &E) -> Result<()>
@@ -136,13 +136,13 @@ impl<'a> CoroutineBlockingHandle<'a> {
         where E: Evented + 'static
     {
         self.coroutine.state = CoroutineState::Blocked;
-        let (awoken_for_eventset_tx, awoken_for_eventset_rx) = channel::<EventSet>();
+        let (eventset_tx, eventset_rx) = channel::<EventSet>();
         let raw_io_ptr: *const E = io as *const E;
 
         let mio_callback = move |coroutine: Coroutine,
                                  mio_event_loop: &mut EventLoop<ThreadScheduler>,
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
-            let token = match blocked_coroutines.insert((coroutine, Some(awoken_for_eventset_tx))) {
+            let token = match blocked_coroutines.insert((coroutine, Some(eventset_tx))) {
                 Ok(token) => token,
                 Err(_) => return Err(CorosError::SlabFullError),
             };
@@ -160,7 +160,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
 
         try!(self.suspend_with_callback(Box::new(mio_callback)));
 
-        Ok(try!(awoken_for_eventset_rx.recv()))
+        Ok(try!(eventset_rx.recv()))
     }
 
     fn suspend_with_callback(&mut self, event_loop_registration: EventLoopRegistrationCallback) -> Result<()> {

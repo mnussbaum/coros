@@ -166,12 +166,12 @@ impl ThreadScheduler {
                 let maybe_coroutine_slab_contents = self
                     .blocked_coroutines
                     .remove(coroutine_token);
-                let (coroutine, maybe_awoken_for_eventset_rx) = match maybe_coroutine_slab_contents {
+                let (coroutine, maybe_eventset_tx) = match maybe_coroutine_slab_contents {
                     Some(coroutine_slab_contents) => coroutine_slab_contents,
                     None => return Err(CorosError::MissingCoroutine),
                 };
-                let awoken_for_eventset_rx = match maybe_awoken_for_eventset_rx {
-                    Some(awoken_for_eventset_rx) => awoken_for_eventset_rx,
+                let eventset_tx = match maybe_eventset_tx {
+                    Some(eventset_tx) => eventset_tx,
                     None => return Err(CorosError::InvalidCoroutineSlabContents),
                 };
                 let eventset = match maybe_eventset {
@@ -179,7 +179,7 @@ impl ThreadScheduler {
                     None => panic!("Coros internal error: eventset changed in an impossible way"),
                 };
 
-                if let Err(_) = awoken_for_eventset_rx.send(eventset) {
+                if let Err(_) = eventset_tx.send(eventset) {
                     return Err(CorosError::SendIoResultToCoroutineError)
                 }
 
@@ -217,7 +217,7 @@ impl ThreadScheduler {
     fn blocked_on_io(&self, coroutine_token: Token) -> Result<bool> {
         let maybe_coroutine_slab_contents = self.blocked_coroutines.get(coroutine_token);
         match maybe_coroutine_slab_contents {
-            Some(&(_, ref maybe_awoken_for_eventset_rx)) => Ok(maybe_awoken_for_eventset_rx.is_some()),
+            Some(&(_, ref maybe_eventset_tx)) => Ok(maybe_eventset_tx.is_some()),
             None => Err(CorosError::MissingCoroutine),
         }
     }
