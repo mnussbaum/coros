@@ -29,6 +29,7 @@ pub struct ThreadScheduler {
     blocked_coroutines: BlockedCoroutineSlab,
     is_shutting_down: bool,
     mio_event_loop: EventLoop<ThreadScheduler>,
+    result_tx: Sender<Result<()>>,
     scheduler_context: Context,
     shutdown_rx: Receiver<()>,
     work_provider: Worker<Coroutine>,
@@ -63,6 +64,7 @@ const MAX_STOLEN_WORK_BATCH_SIZE: usize = 1000;
 
 impl ThreadScheduler {
     pub fn new(
+        result_tx: Sender<Result<()>>,
         shutdown_rx: Receiver<()>,
         work_provider: Worker<Coroutine>,
         work_rx: Receiver<Coroutine>,
@@ -72,6 +74,7 @@ impl ThreadScheduler {
             blocked_coroutines: Slab::new(1024 * 64),
             is_shutting_down: false,
             mio_event_loop: try!(EventLoop::new()),
+            result_tx: result_tx,
             scheduler_context: Context::empty(),
             shutdown_rx: shutdown_rx,
             work_provider: work_provider,
@@ -100,7 +103,14 @@ impl ThreadScheduler {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) {
+        let result_tx = self.result_tx.clone();
+        result_tx
+            .send(self.run_eventloop())
+            .expect("Coros internal error: attempting to send thread scheduler result to closed channel");
+    }
+
+    pub fn run_eventloop(&mut self) -> Result<()> {
         'event_loop:
         while !self.ready_to_shutdown() {
             try!(self.move_received_work_onto_queue());

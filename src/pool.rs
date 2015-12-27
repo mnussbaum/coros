@@ -1,4 +1,3 @@
-use std::collections::hash_map::HashMap;
 use std::fmt;
 use std::sync::RwLock;
 use std::sync::mpsc::{
@@ -34,7 +33,6 @@ use thread_scheduler::ThreadScheduler;
 struct ThreadSchedulerComponents {
     shutdown_txs: Vec<Sender<()>>,
     result_rx: Receiver<Result<()>>,
-    result_tx: Sender<Result<()>>,
     thread_schedulers: Vec<ThreadScheduler>,
     work_txs: Vec<Sender<Coroutine>>,
 }
@@ -46,7 +44,6 @@ pub struct Pool {
     thread_count: u32,
     thread_pool: RwLock<ThreadPool>,
     thread_scheduler_result_rx: Receiver<Result<()>>,
-    thread_scheduler_result_tx: Sender<Result<()>>,
     thread_schedulers: Option<Vec<ThreadScheduler>>,
     work_txs: Vec<Sender<Coroutine>>,
 }
@@ -73,7 +70,6 @@ impl Pool {
             thread_count: thread_count,
             thread_pool: RwLock::new(ThreadPool::new(thread_count)),
             thread_scheduler_result_rx: thread_scheduler_components.result_rx,
-            thread_scheduler_result_tx: thread_scheduler_components.result_tx,
             thread_schedulers: Some(thread_scheduler_components.thread_schedulers),
             work_txs: thread_scheduler_components.work_txs,
         })
@@ -86,6 +82,7 @@ impl Pool {
         let mut work_providers: Vec<Worker<Coroutine>> = Vec::with_capacity(thread_count);
         let mut work_txs: Vec<Sender<Coroutine>> = Vec::with_capacity(thread_count);
         let mut shutdown_txs: Vec<Sender<()>> = Vec::with_capacity(thread_count);
+        let (result_tx, result_rx) = channel();
 
         for _ in 0..thread_count {
             let (work_provider, work_stealer) = BufferPool::<Coroutine>::new().deque();
@@ -99,6 +96,7 @@ impl Pool {
             work_txs.push(work_tx);
 
             let thread_scheduler = try!(ThreadScheduler::new(
+                result_tx.clone(),
                 shutdown_rx,
                 work_provider,
                 work_rx,
@@ -107,10 +105,8 @@ impl Pool {
             thread_schedulers.push(thread_scheduler);
         }
 
-        let (result_tx, result_rx) = channel();
         Ok(ThreadSchedulerComponents {
             result_rx: result_rx,
-            result_tx: result_tx,
             shutdown_txs: shutdown_txs,
             thread_schedulers: thread_schedulers,
             work_txs: work_txs,
@@ -180,13 +176,7 @@ impl Pool {
         };
         thread_pool.scoped(|scoped| {
             for mut thread_scheduler in thread_schedulers.drain(..) {
-                let thread_scheduler_result_tx = self.thread_scheduler_result_tx.clone();
-                scoped.execute(move || {
-                    let scheduler_result = thread_scheduler.run();
-                    thread_scheduler_result_tx
-                        .send(scheduler_result)
-                        .expect("Coros internal error: attempting to send thread scheduler result to closed channel");
-                });
+                scoped.execute(move || { thread_scheduler.run() });
             }
         });
         self.is_running = true;
@@ -198,21 +188,19 @@ impl Pool {
         if !self.is_running {
             return Ok(());
         }
-        let mut errors = HashMap::new();
-        let mut error_index = 0;
+        let mut errors = Vec::with_capacity(self.thread_count as usize);
 
         let thread_pool =  try!(self.thread_pool.write());
         for shutdown_tx in self.shutdown_txs.drain(..) {
             if let Err(_) = shutdown_tx.send(()) {
-                errors.insert(error_index, CorosError::UnableToSendThreadShutdownSignal);
+                errors.push(CorosError::UnableToSendThreadShutdownSignal);
             }
-            error_index = error_index + 1;
         }
         thread_pool.join_all();
 
-        for thread_index in 0..self.thread_count {
+        for _ in 0..self.thread_count {
             if let Err(err) = self.thread_scheduler_result_rx.recv() {
-                errors.insert(thread_index, CorosError::UnableToReceiveThreadShutdownResult(err));
+                errors.push(CorosError::UnableToReceiveThreadShutdownResult(err));
             }
         }
         self.is_running = false;

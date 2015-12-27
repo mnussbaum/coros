@@ -1,4 +1,3 @@
-use std::collections::hash_map::HashMap;
 use std::error::{
     Error,
 };
@@ -48,7 +47,7 @@ pub enum CorosError {
     TryRecvError(mpsc::TryRecvError),
     UnableToReceiveThreadShutdownResult(mpsc::RecvError),
     UnableToSendThreadShutdownSignal,
-    UncleanShutdown(HashMap<u32, CorosError>),
+    UncleanShutdown(Vec<CorosError>),
     WorkStealerMutexPoisoned,
 }
 
