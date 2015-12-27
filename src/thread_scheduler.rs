@@ -41,15 +41,21 @@ impl MioHandler for ThreadScheduler {
     type Message = Token;
 
     fn notify(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token) {
-        self.enqueue_coroutine(coroutine_token, None);
+        if let Err(err) = self.enqueue_coroutine(coroutine_token, None) {
+          error!("Error notifying coroutine of IO: {:?}", err);
+        }
     }
 
     fn ready(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token, eventset: EventSet) {
-        self.enqueue_coroutine(coroutine_token, Some(eventset));
+        if let Err(err) = self.enqueue_coroutine(coroutine_token, Some(eventset)) {
+          error!("Error readying coroutine for IO: {:?}", err);
+        }
     }
 
     fn timeout(&mut self, _: &mut EventLoop<ThreadScheduler>, coroutine_token: Token) {
-        self.enqueue_coroutine(coroutine_token, None);
+        if let Err(err) = self.enqueue_coroutine(coroutine_token, None) {
+          error!("Error awakening coroutine after timer alert: {:?}", err);
+        }
     }
 }
 
@@ -97,14 +103,15 @@ impl ThreadScheduler {
     pub fn run(&mut self) -> Result<()> {
         'event_loop:
         while !self.ready_to_shutdown() {
-            self.move_received_work_onto_queue();
+            try!(self.move_received_work_onto_queue());
+
             let raw_self_ptr: *mut ThreadScheduler = self;
             try!(self.mio_event_loop.run_once(unsafe { &mut *raw_self_ptr }, Some(10)));
 
             let work_result = match self.work_provider.pop() {
                 Some(coroutine) => self.run_coroutine(coroutine),
                 None => {
-                    match self.stolen_work() {
+                    match try!(self.stolen_work()) {
                         Some(coroutine) => self.run_coroutine(coroutine),
                         None => Ok(()),
                     }
@@ -125,53 +132,63 @@ impl ThreadScheduler {
         self.is_shutting_down && self.blocked_coroutines.is_empty()
     }
 
-    pub fn stolen_work(&mut self) -> Option<Coroutine> {
-        match self.work_stealers.lock() {
-            Ok(ref work_stealers) => {
-                for work_stealer in work_stealers.iter() {
-                    if let Stolen::Data(coroutine) = work_stealer.steal() {
-                        return Some(coroutine);
-                    }
-                }
-            },
-            Err(err) => panic!("Coros internal error: error getting work stealer lock: {}", err),
+    pub fn stolen_work(&mut self) -> Result<Option<Coroutine>> {
+        let ref work_stealers = try!(self.work_stealers.lock());
+        for work_stealer in work_stealers.iter() {
+            if let Stolen::Data(coroutine) = work_stealer.steal() {
+                return Ok(Some(coroutine));
+            }
         }
 
-        None
+        Ok(None)
     }
 
-    pub fn move_received_work_onto_queue(&self) {
+    pub fn move_received_work_onto_queue(&self) -> Result<()> {
         for _ in 0..MAX_STOLEN_WORK_BATCH_SIZE {
             match self.work_receiver.try_recv() {
                 Ok(work) => self.work_provider.push(work),
                 Err(TryRecvError::Empty) => break,
-                Err(err) => panic!("Coros internal error: error receinving work {:?}", err),
+                Err(err) => return Err(CorosError::from(err)),
             };
         }
+
+        Ok(())
     }
 
-    fn enqueue_coroutine(&mut self, coroutine_token: Token, maybe_eventset: Option<EventSet>) {
-        let blocked_on_io = self.blocked_on_io(coroutine_token);
+    fn enqueue_coroutine(&mut self, coroutine_token: Token, maybe_eventset: Option<EventSet>) -> Result<()> {
+        let blocked_on_io = try!(self.blocked_on_io(coroutine_token));
         let awoken_for_io = maybe_eventset.is_some();
 
         match (blocked_on_io, awoken_for_io) {
             (true, true) => {
                 // Blocked on IO, awoken for IO
 
-                let (coroutine, maybe_awoken_for_eventset_rx) = self
+                let maybe_coroutine_slab_contents = self
                     .blocked_coroutines
-                    .remove(coroutine_token)
-                    .expect("Coros internal error: timeout expired for missing coroutine");
-                let awoken_for_eventset_rx = maybe_awoken_for_eventset_rx.unwrap();
-                let eventset = maybe_eventset.unwrap();
+                    .remove(coroutine_token);
+                let (coroutine, maybe_awoken_for_eventset_rx) = match maybe_coroutine_slab_contents {
+                    Some(coroutine_slab_contents) => coroutine_slab_contents,
+                    None => return Err(CorosError::MissingCoroutine),
+                };
+                let awoken_for_eventset_rx = match maybe_awoken_for_eventset_rx {
+                    Some(awoken_for_eventset_rx) => awoken_for_eventset_rx,
+                    None => return Err(CorosError::InvalidCoroutineSlabContents),
+                };
+                let eventset = match maybe_eventset {
+                    Some(eventset) => eventset,
+                    None => panic!("Coros internal error: eventset changed in an impossible way"),
+                };
 
-                awoken_for_eventset_rx.send(eventset).unwrap(); //TODO: error handling
+                if let Err(_) = awoken_for_eventset_rx.send(eventset) {
+                    return Err(CorosError::SendIoResultToCoroutineError)
+                }
+
                 self.work_provider.push(coroutine);
             },
             (true, false) => {
                 // Blocked on IO, awoken for not-IO
 
-                panic!("Coros internal error: blocked on IO but awoken for not IO");
+                return Err(CorosError::CoroutineBlockedOnIoAwokenForNotIo)
             },
             (false, true) => {
                 // Blocked on not-IO, awoken for IO
@@ -182,21 +199,26 @@ impl ThreadScheduler {
             (false, false) => {
                 // Blocked on not-IO, awoken for not-IO
 
-                let (coroutine, _) = self
+                let maybe_coroutine_slab_contents = self
                     .blocked_coroutines
-                    .remove(coroutine_token)
-                    .expect("Coros internal error: timeout expired for missing coroutine");
+                    .remove(coroutine_token);
+                let (coroutine, _) = match maybe_coroutine_slab_contents {
+                    Some(coroutine_slab_contents) => coroutine_slab_contents,
+                    None => return Err(CorosError::MissingCoroutine),
+                };
+
                 self.work_provider.push(coroutine);
             },
         };
+
+        Ok(())
     }
 
-    fn blocked_on_io(&self, coroutine_token: Token) -> bool {
-        let &(_, ref maybe_awoken_for_eventset_rx) = self
-            .blocked_coroutines
-            .get(coroutine_token)
-            .expect("Coros internal error: timeout expired for missing coroutine");
-
-        maybe_awoken_for_eventset_rx.is_some()
+    fn blocked_on_io(&self, coroutine_token: Token) -> Result<bool> {
+        let maybe_coroutine_slab_contents = self.blocked_coroutines.get(coroutine_token);
+        match maybe_coroutine_slab_contents {
+            Some(&(_, ref maybe_awoken_for_eventset_rx)) => Ok(maybe_awoken_for_eventset_rx.is_some()),
+            None => Err(CorosError::MissingCoroutine),
+        }
     }
 }
