@@ -445,3 +445,19 @@ fn test_multiple_pool_starts_and_stops_is_ok() {
     assert_eq!(2, guard.join().unwrap());
     pool.stop().unwrap();
 }
+
+#[test]
+fn test_joining_a_coroutine_after_stopping_its_pool_is_ok_as_long_as_coroutine_finishes() {
+    let pool_name = "pool_name".to_string();
+    let mut pool = Pool::new(pool_name, 1).unwrap();
+
+    pool.start().unwrap();
+    let mut guard = pool.spawn(
+        move |_: &mut CoroutineBlockingHandle| { 1 },
+        STACK_SIZE,
+    ).unwrap();
+    std::thread::sleep(StdDuration::from_millis(50));
+    pool.stop().unwrap();
+
+    assert_eq!(1, guard.join().unwrap());
+}
