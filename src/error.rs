@@ -33,6 +33,7 @@ pub enum CorosError {
     InvalidCoroutineNoCallback,
     InvalidCoroutineNoContext,
     InvalidCoroutineSlabContents,
+    InvalidPoolNoSchedulerResultReceiver,
     InvalidThreadForSpawn(u32, u32),
     MioIoError(IoError),
     MioTimerError(TimerError),
@@ -79,6 +80,9 @@ impl CorosError {
             CorosError::InvalidCoroutineSlabContents => {
                 "Invalid coroutine slab contents"
             }
+            CorosError::InvalidPoolNoSchedulerResultReceiver => {
+                "Invalid coroutine pool, no native thread result receiver"
+            },
             CorosError::InvalidThreadForSpawn(_, _) => {
                 "Index of thread for coroutine spawn greater then thread count"
             },
@@ -135,6 +139,7 @@ impl Error for CorosError {
             CorosError::InvalidCoroutineNoCallback => None,
             CorosError::InvalidCoroutineNoContext => None,
             CorosError::InvalidCoroutineSlabContents => None,
+            CorosError::InvalidPoolNoSchedulerResultReceiver => None,
             CorosError::InvalidThreadForSpawn(_, _) => None,
             CorosError::MioIoError(ref err) => Some(err),
             CorosError::MioTimerError(ref err) => Some(err),

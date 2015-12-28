@@ -423,3 +423,25 @@ fn test_multiple_pool_stops_is_ok() {
     pool.stop().unwrap();
 }
 
+#[test]
+fn test_multiple_pool_starts_and_stops_is_ok() {
+    let pool_name = "a_name".to_string();
+    let mut pool = Pool::new(pool_name, 1).unwrap();
+
+    let mut guard = pool.spawn(
+        move |_: &mut CoroutineBlockingHandle| { 1 },
+        STACK_SIZE,
+    ).unwrap();
+
+    pool.start().unwrap();
+    assert_eq!(1, guard.join().unwrap());
+    pool.stop().unwrap();
+
+    pool.start().unwrap();
+    let mut guard = pool.spawn(
+        move |_: &mut CoroutineBlockingHandle| { 2 },
+        STACK_SIZE,
+    ).unwrap();
+    assert_eq!(2, guard.join().unwrap());
+    pool.stop().unwrap();
+}

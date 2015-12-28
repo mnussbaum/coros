@@ -1,5 +1,8 @@
 use std::fmt;
-use std::sync::RwLock;
+use std::sync::{
+    Mutex,
+    RwLock,
+};
 use std::sync::mpsc::{
     channel,
     Receiver,
@@ -30,22 +33,19 @@ use coroutine_blocking_handle::CoroutineBlockingHandle;
 use error::CorosError;
 use scheduler::Scheduler;
 
-struct SchedulerComponents {
-    shutdown_txs: Vec<Sender<()>>,
-    result_rx: Receiver<Result<()>>,
-    schedulers: Vec<Scheduler>,
-    work_txs: Vec<Sender<Coroutine>>,
+struct SchedulerHandle {
+    shutdown_tx: Sender<()>,
+    scheduler: Mutex<Option<Scheduler>>,
+    work_tx: Sender<Coroutine>,
 }
 
 pub struct Pool {
     pub is_running: bool,
     pub name: String,
-    shutdown_txs: Vec<Sender<()>>,
     thread_count: u32,
     thread_pool: RwLock<ThreadPool>,
-    scheduler_result_rx: Receiver<Result<()>>,
-    schedulers: Option<Vec<Scheduler>>,
-    work_txs: Vec<Sender<Coroutine>>,
+    scheduler_result_rx: Option<Receiver<Result<()>>>,
+    scheduler_handles: Option<Vec<SchedulerHandle>>,
 }
 
 impl fmt::Display for Pool {
@@ -62,26 +62,24 @@ impl fmt::Debug for Pool {
 
 impl Pool {
     pub fn new(name: String, thread_count: u32) -> Result<Pool> {
-        let scheduler_components = try!(Pool::create_schedulers(thread_count));
-        Ok(Pool {
+        let mut pool = Pool {
             is_running: false,
             name: name,
-            shutdown_txs: scheduler_components.shutdown_txs,
             thread_count: thread_count,
             thread_pool: RwLock::new(ThreadPool::new(thread_count)),
-            scheduler_result_rx: scheduler_components.result_rx,
-            schedulers: Some(scheduler_components.schedulers),
-            work_txs: scheduler_components.work_txs,
-        })
+            scheduler_result_rx: None,
+            scheduler_handles: None,
+        };
+        try!(pool.create_scheduler_handles());
+
+        Ok(pool)
     }
 
-    fn create_schedulers(thread_count: u32) -> Result<SchedulerComponents> {
-        let thread_count: usize = thread_count as usize;
-        let mut schedulers: Vec<Scheduler> = Vec::with_capacity(thread_count);
+    pub fn create_scheduler_handles(&mut self) -> Result<()> {
+        let thread_count: usize = self.thread_count as usize;
+        let mut scheduler_handles: Vec<SchedulerHandle> = Vec::with_capacity(thread_count);
         let mut work_stealers: Vec<Stealer<Coroutine>> = Vec::with_capacity(thread_count);
         let mut work_providers: Vec<Worker<Coroutine>> = Vec::with_capacity(thread_count);
-        let mut work_txs: Vec<Sender<Coroutine>> = Vec::with_capacity(thread_count);
-        let mut shutdown_txs: Vec<Sender<()>> = Vec::with_capacity(thread_count);
         let (result_tx, result_rx) = channel();
 
         for _ in 0..thread_count {
@@ -91,9 +89,7 @@ impl Pool {
         }
         for work_provider in work_providers.into_iter() {
             let (shutdown_tx, shutdown_rx) = channel();
-            shutdown_txs.push(shutdown_tx);
             let (work_tx, work_rx) = channel();
-            work_txs.push(work_tx);
 
             let scheduler = try!(Scheduler::new(
                 result_tx.clone(),
@@ -102,15 +98,18 @@ impl Pool {
                 work_rx,
                 work_stealers.clone(),
             ));
-            schedulers.push(scheduler);
+            let scheduler_handle = SchedulerHandle {
+                shutdown_tx: shutdown_tx,
+                scheduler: Mutex::new(Some(scheduler)),
+                work_tx: work_tx,
+            };
+            scheduler_handles.push(scheduler_handle);
         }
 
-        Ok(SchedulerComponents {
-            result_rx: result_rx,
-            shutdown_txs: shutdown_txs,
-            schedulers: schedulers,
-            work_txs: work_txs,
-        })
+        self.scheduler_result_rx = Some(result_rx);
+        self.scheduler_handles = Some(scheduler_handles);
+
+        Ok(())
     }
 
     pub fn spawn_with_thread_index<F, T>(
@@ -122,11 +121,16 @@ impl Pool {
         where F: FnOnce(&mut CoroutineBlockingHandle) -> T + Send + 'static,
               T: Send + 'static,
     {
-        let work_tx = match self.work_txs.get(thread_index as usize) {
+        let scheduler_handles = match self.scheduler_handles {
+            Some(ref scheduler_handles) => scheduler_handles,
+            None => return Err(CorosError::CannotStartPoolWithoutSchedulers),
+        };
+
+        let scheduler_handle = match scheduler_handles.get(thread_index as usize) {
             None => {
                 return Err(CorosError::InvalidThreadForSpawn(thread_index, self.thread_count))
             }
-            Some(work_tx) => work_tx,
+            Some(scheduler_handle) => scheduler_handle,
         };
 
         let (coroutine_result_tx, coroutine_result_rx) = channel();
@@ -144,7 +148,7 @@ impl Pool {
             Stack::new(stack_size),
         );
 
-        if let Err(_) = work_tx.send(coroutine) {
+        if let Err(_) = scheduler_handle.work_tx.send(coroutine) {
           return Err(CorosError::TriedToSpawnCoroutineOnShutdownThread)
         }
 
@@ -168,15 +172,24 @@ impl Pool {
         if self.is_running {
             return Ok(())
         }
+        self.is_running = true;
 
         let mut thread_pool =  try!(self.thread_pool.write());
-        let mut schedulers = match self.schedulers.take() {
-            Some(schedulers) => schedulers,
+        let scheduler_handles = match self.scheduler_handles {
+            Some(ref scheduler_handles) => scheduler_handles,
             None => return Err(CorosError::CannotStartPoolWithoutSchedulers),
         };
         thread_pool.scoped(|scoped| {
-            for mut scheduler in schedulers.drain(..) {
-                scoped.execute(move || { scheduler.run() });
+            for scheduler_handle in scheduler_handles.iter() {
+                let mut scheduler = scheduler_handle.scheduler
+                    .lock()
+                    .expect("Coros internal error: scheduler lock poisoned");
+                match scheduler.take() {
+                    Some(mut scheduler) => {
+                        scoped.execute(move || { scheduler.run() })
+                    },
+                    None => panic!("Coros internal error: starting pool without full set of schedulers"),
+                }
             }
         });
         self.is_running = true;
@@ -190,20 +203,33 @@ impl Pool {
         }
         let mut errors = Vec::with_capacity(self.thread_count as usize);
 
-        let thread_pool =  try!(self.thread_pool.write());
-        for shutdown_tx in self.shutdown_txs.drain(..) {
-            if let Err(_) = shutdown_tx.send(()) {
-                errors.push(CorosError::UnableToSendThreadShutdownSignal);
+        {
+            let thread_pool =  try!(self.thread_pool.write());
+            let scheduler_handles = match self.scheduler_handles {
+                Some(ref scheduler_handles) => scheduler_handles,
+                None => return Err(CorosError::CannotStartPoolWithoutSchedulers),
+            };
+            for scheduler_handle in scheduler_handles {
+                if let Err(_) = scheduler_handle.shutdown_tx.send(()) {
+                    errors.push(CorosError::UnableToSendThreadShutdownSignal);
+                }
             }
+            thread_pool.join_all();
         }
-        thread_pool.join_all();
-
-        for _ in 0..self.thread_count {
-            if let Err(err) = self.scheduler_result_rx.recv() {
-                errors.push(CorosError::UnableToReceiveThreadShutdownResult(err));
+        {
+            let scheduler_result_rx = match self.scheduler_result_rx {
+                Some(ref scheduler_result_rx) => scheduler_result_rx,
+                None => return Err(CorosError::InvalidPoolNoSchedulerResultReceiver),
+            };
+            for _ in 0..self.thread_count {
+                if let Err(err) = scheduler_result_rx.recv() {
+                    errors.push(CorosError::UnableToReceiveThreadShutdownResult(err));
+                }
             }
         }
         self.is_running = false;
+
+        try!(self.create_scheduler_handles());
 
         if errors.is_empty() {
             Ok(())
