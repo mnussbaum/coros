@@ -1,8 +1,8 @@
 use std::sync::mpsc::{
     channel,
-    Receiver,
+    Receiver as StdReceiver,
     RecvError,
-    Sender,
+    Sender as StdSender,
 };
 
 use mio::Token;
@@ -16,12 +16,12 @@ pub struct BlockedMessage {
     pub token: Token,
 }
 
-pub struct CoroutineSender<M: Send> {
-    blocked_message_rx: Receiver<BlockedMessage>,
-    user_message_tx: Sender<M>,
+pub struct Sender<M: Send> {
+    blocked_message_rx: StdReceiver<BlockedMessage>,
+    user_message_tx: StdSender<M>,
 }
 
-impl<M: Send> CoroutineSender<M> {
+impl<M: Send> Sender<M> {
     // Is there a way to implement this without blocking while allowing messages to send before
     // recv is called?
     pub fn send(&self, message: M) -> CorosResult<()> {
@@ -40,25 +40,25 @@ impl<M: Send> CoroutineSender<M> {
     }
 }
 
-pub struct CoroutineReceiver<M: Send> {
-    pub blocked_message_tx: Sender<BlockedMessage>,
-    user_message_rx: Receiver<M>,
+pub struct Receiver<M: Send> {
+    pub blocked_message_tx: StdSender<BlockedMessage>,
+    user_message_rx: StdReceiver<M>,
 }
 
-impl<M: Send> CoroutineReceiver<M> {
+impl<M: Send> Receiver<M> {
     pub fn recv(&self) -> Result<M, RecvError> {
         self.user_message_rx.recv()
     }
 }
 
-pub fn coroutine_channel<M: Send>() -> (CoroutineSender<M>, CoroutineReceiver<M>) {
+pub fn new<M: Send>() -> (Sender<M>, Receiver<M>) {
     let (blocked_message_tx, blocked_message_rx) = channel::<BlockedMessage>();
     let (user_message_tx, user_message_rx) = channel::<M>();
-    let tx = CoroutineSender::<M> {
+    let tx = Sender::<M> {
       blocked_message_rx: blocked_message_rx,
       user_message_tx: user_message_tx,
     };
-    let rx = CoroutineReceiver::<M> {
+    let rx = Receiver::<M> {
       blocked_message_tx: blocked_message_tx,
       user_message_rx: user_message_rx,
     };

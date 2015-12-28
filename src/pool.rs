@@ -23,13 +23,13 @@ use rand::{
 };
 use scoped_threadpool::Pool as ThreadPool;
 
-use CoroutineJoinHandle;
 use Result;
 use coroutine::{
     Coroutine,
     CoroutineState,
 };
-use coroutine_blocking_handle::CoroutineBlockingHandle;
+use coroutine::io_handle::IoHandle;
+use coroutine::join_handle::JoinHandle;
 use error::CorosError;
 use scheduler::Scheduler;
 
@@ -117,8 +117,8 @@ impl Pool {
         coroutine_body: F,
         stack_size: usize,
         thread_index: u32
-    ) -> Result<CoroutineJoinHandle<T>>
-        where F: FnOnce(&mut CoroutineBlockingHandle) -> T + Send + 'static,
+    ) -> Result<JoinHandle<T>>
+        where F: FnOnce(&mut IoHandle) -> T + Send + 'static,
               T: Send + 'static,
     {
         let scheduler_handles = match self.scheduler_handles {
@@ -134,7 +134,7 @@ impl Pool {
         };
 
         let (coroutine_result_tx, coroutine_result_rx) = channel();
-        let coroutine_function = Box::new(move |coroutine_handle: &mut CoroutineBlockingHandle| {
+        let coroutine_function = Box::new(move |coroutine_handle: &mut IoHandle| {
             let maybe_coroutine_result = coroutine_body(coroutine_handle);
 
             coroutine_handle.coroutine.state = CoroutineState::Terminated;
@@ -152,11 +152,11 @@ impl Pool {
           return Err(CorosError::TriedToSpawnCoroutineOnShutdownThread)
         }
 
-        Ok(CoroutineJoinHandle::<T>::new(coroutine_result_rx))
+        Ok(JoinHandle::<T>::new(coroutine_result_rx))
     }
 
-    pub fn spawn<F, T>(&mut self, coroutine_body: F, stack_size: usize) -> Result<CoroutineJoinHandle<T>>
-        where F: FnOnce(&mut CoroutineBlockingHandle) -> T + Send + 'static,
+    pub fn spawn<F, T>(&mut self, coroutine_body: F, stack_size: usize) -> Result<JoinHandle<T>>
+        where F: FnOnce(&mut IoHandle) -> T + Send + 'static,
               T: Send + 'static,
     {
         let thread_count = self.thread_count;

@@ -14,9 +14,9 @@ use coroutine::{
     Coroutine,
     CoroutineState,
 };
-use coroutine_channel::{
+use coroutine::channel::{
     BlockedMessage,
-    CoroutineReceiver,
+    Receiver,
 };
 use error::CorosError;
 use Result;
@@ -25,12 +25,12 @@ use scheduler::{
     Scheduler,
 };
 
-pub struct CoroutineBlockingHandle<'a> {
+pub struct IoHandle<'a> {
     pub coroutine: &'a mut Coroutine,
     pub scheduler_context: &'a Context,
 }
 
-impl<'a> CoroutineBlockingHandle<'a> {
+impl<'a> IoHandle<'a> {
     pub fn sleep_ms(&mut self, ms: u64) -> Result<()> {
         self.coroutine.state = CoroutineState::Blocked;
 
@@ -50,7 +50,7 @@ impl<'a> CoroutineBlockingHandle<'a> {
         self.suspend_with_callback(Box::new(mio_callback))
     }
 
-    pub fn recv<M: Send>(&mut self, rx: &CoroutineReceiver<M>) -> Result<M> {
+    pub fn recv<M: Send>(&mut self, rx: &Receiver<M>) -> Result<M> {
         let blocked_message_tx = rx.blocked_message_tx.clone();
         self.coroutine.state = CoroutineState::Blocked;
 

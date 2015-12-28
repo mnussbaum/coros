@@ -8,7 +8,11 @@ use context::{
 };
 use mio::EventLoop;
 
-use coroutine_blocking_handle::CoroutineBlockingHandle;
+pub mod io_handle;
+pub mod join_handle;
+pub mod channel;
+
+use IoHandle;
 use error::CorosError;
 use Result;
 use scheduler::{
@@ -31,7 +35,7 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
         .take()
         .expect("Coros internal error: cannot run coroutine without function");
     let scheduler_context: &Context = unsafe { mem::transmute(scheduler_context_ptr) };
-    let mut coroutine_blocking_handle = CoroutineBlockingHandle {
+    let mut coroutine_blocking_handle = IoHandle {
         coroutine: coroutine,
         scheduler_context: scheduler_context,
     };
@@ -47,7 +51,7 @@ pub type EventLoopRegistrationCallback = Box<FnBox(Coroutine, &mut EventLoop<Sch
 
 pub struct Coroutine {
     pub context: Option<Context>,
-    function: Option<Box<FnBox(&mut CoroutineBlockingHandle) + Send + 'static>>,
+    function: Option<Box<FnBox(&mut IoHandle) + Send + 'static>>,
     pub event_loop_registration: Option<EventLoopRegistrationCallback>,
     pub state: CoroutineState,
 }
@@ -56,7 +60,7 @@ unsafe impl Send for Coroutine {}
 
 impl Coroutine {
     pub fn new(
-        function: Box<FnBox(&mut CoroutineBlockingHandle) + Send + 'static>,
+        function: Box<FnBox(&mut IoHandle) + Send + 'static>,
         stack: Stack,
     ) -> Coroutine
     {

@@ -3,20 +3,20 @@ use std::sync::mpsc::Receiver;
 use error::CorosError;
 use Result;
 
-pub struct CoroutineJoinHandle<T>
+pub struct JoinHandle<T>
     where T: Send + 'static
 {
     coroutine_result_rx: Receiver<T>,
     pub is_joined: bool,
 }
 
-impl<T> CoroutineJoinHandle<T>
+impl<T> JoinHandle<T>
     where T: Send + 'static
 {
 
-    pub fn new(coroutine_result_rx: Receiver<T>) -> CoroutineJoinHandle<T>
+    pub fn new(coroutine_result_rx: Receiver<T>) -> JoinHandle<T>
     {
-        CoroutineJoinHandle {
+        JoinHandle {
             coroutine_result_rx: coroutine_result_rx,
             is_joined: false,
         }
