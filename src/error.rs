@@ -41,7 +41,7 @@ pub enum CorosError {
     MissingCoroutine,
     RecvError(mpsc::RecvError),
     SendIoResultToCoroutineError,
-    SlabFullError,
+    SlabFull,
     ThreadPoolReadLockPoisoned,
     ThreadPoolWriteLockPoisoned,
     TriedToSpawnCoroutineOnShutdownThread,
@@ -96,7 +96,7 @@ impl CorosError {
             CorosError::SendIoResultToCoroutineError => {
                 "Error sending IO result to coroutine"
             },
-            CorosError::SlabFullError => {
+            CorosError::SlabFull => {
                 "Error attempting to insert a suspended coroutine into a full slab"
             }
             CorosError::ThreadPoolReadLockPoisoned => {
@@ -147,7 +147,7 @@ impl Error for CorosError {
             CorosError::MissingCoroutine => None,
             CorosError::RecvError(ref err) => Some(err),
             CorosError::SendIoResultToCoroutineError => None,
-            CorosError::SlabFullError => None,
+            CorosError::SlabFull => None,
             CorosError::ThreadPoolReadLockPoisoned => None,
             CorosError::ThreadPoolWriteLockPoisoned => None,
             CorosError::TriedToSpawnCoroutineOnShutdownThread => None,

@@ -39,7 +39,7 @@ impl<'a> IoHandle<'a> {
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
             let token = match blocked_coroutines.insert((coroutine, None)) {
                 Ok(token) => token,
-                Err(_) => return Err(CorosError::SlabFullError),
+                Err(_) => return Err(CorosError::SlabFull),
             };
 
             try!(mio_event_loop.timeout_ms(token, ms));
@@ -59,7 +59,7 @@ impl<'a> IoHandle<'a> {
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
             let token = match blocked_coroutines.insert((coroutine, None)) {
                 Ok(token) => token,
-                Err(_) => return Err(CorosError::SlabFullError),
+                Err(_) => return Err(CorosError::SlabFull),
             };
             let mio_tx = mio_event_loop.channel();
             let message = BlockedMessage {
@@ -91,7 +91,7 @@ impl<'a> IoHandle<'a> {
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
             let token = match blocked_coroutines.insert((coroutine, Some(eventset_tx))) {
                 Ok(token) => token,
-                Err(_) => return Err(CorosError::SlabFullError),
+                Err(_) => return Err(CorosError::SlabFull),
             };
             try!(
                 mio_event_loop.register(
@@ -121,7 +121,7 @@ impl<'a> IoHandle<'a> {
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
             let token = match blocked_coroutines.insert((coroutine, None)) {
                 Ok(token) => token,
-                Err(_) => return Err(CorosError::SlabFullError),
+                Err(_) => return Err(CorosError::SlabFull),
             };
             try!(mio_event_loop.deregister(unsafe { &*raw_io_ptr }));
             try!(mio_event_loop.timeout_ms(token, 0));
@@ -144,7 +144,7 @@ impl<'a> IoHandle<'a> {
                                  blocked_coroutines: &mut BlockedCoroutineSlab| -> Result<()> {
             let token = match blocked_coroutines.insert((coroutine, Some(eventset_tx))) {
                 Ok(token) => token,
-                Err(_) => return Err(CorosError::SlabFullError),
+                Err(_) => return Err(CorosError::SlabFull),
             };
             try!(
                 mio_event_loop.reregister(
