@@ -87,7 +87,7 @@ impl Scheduler {
         let mut coroutine = coroutine;
         try!(coroutine.run(&self.scheduler_context));
 
-        if !coroutine.terminated() {
+        if coroutine.blocked() {
             match coroutine.event_loop_registration.take() {
                 Some(event_loop_registration) => try!(
                     event_loop_registration.call_box((

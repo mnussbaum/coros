@@ -1,3 +1,4 @@
+use std::panic;
 use std::sync::mpsc::{
     channel,
     Receiver as StdReceiver,
@@ -40,6 +41,9 @@ impl<M: Send> Sender<M> {
     }
 }
 
+impl<M: Send> panic::RecoverSafe for Sender<M> {}
+impl<M: Send> panic::RefRecoverSafe for Sender<M> {}
+
 pub struct Receiver<M: Send> {
     pub blocked_message_tx: StdSender<BlockedMessage>,
     user_message_rx: StdReceiver<M>,
@@ -65,3 +69,6 @@ pub fn new<M: Send>() -> (Sender<M>, Receiver<M>) {
 
     (tx, rx)
 }
+
+impl<M: Send> panic::RecoverSafe for Receiver<M> {}
+impl<M: Send> panic::RefRecoverSafe for Receiver<M> {}

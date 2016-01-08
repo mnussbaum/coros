@@ -25,7 +25,6 @@ pub enum CoroutineState {
     New,
     Running,
     Blocked,
-    Terminated,
 }
 
 extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -> ! {
@@ -35,12 +34,12 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
         .take()
         .expect("Coros internal error: cannot run coroutine without function");
     let scheduler_context: &Context = unsafe { mem::transmute(scheduler_context_ptr) };
-    let mut coroutine_blocking_handle = IoHandle {
+    let coroutine_blocking_handle = IoHandle {
         coroutine: coroutine,
         scheduler_context: scheduler_context,
     };
 
-    function.call_box((&mut coroutine_blocking_handle,));
+    function.call_box((coroutine_blocking_handle,));
 
     Context::load(&scheduler_context);
 
@@ -51,7 +50,7 @@ pub type EventLoopRegistrationCallback = Box<FnBox(Coroutine, &mut EventLoop<Sch
 
 pub struct Coroutine {
     pub context: Option<Context>,
-    function: Option<Box<FnBox(&mut IoHandle) + Send + 'static>>,
+    function: Option<Box<FnBox(IoHandle) + Send + 'static>>,
     pub event_loop_registration: Option<EventLoopRegistrationCallback>,
     pub state: CoroutineState,
 }
@@ -60,7 +59,7 @@ unsafe impl Send for Coroutine {}
 
 impl Coroutine {
     pub fn new(
-        function: Box<FnBox(&mut IoHandle) + Send + 'static>,
+        function: Box<FnBox(IoHandle) + Send + 'static>,
         stack: Stack,
     ) -> Coroutine
     {
@@ -100,9 +99,9 @@ impl Coroutine {
         Ok(())
     }
 
-    pub fn terminated(&self) -> bool {
+    pub fn blocked(&self) -> bool {
         match self.state {
-            CoroutineState::Terminated => true,
+            CoroutineState::Blocked => true,
             _ => false,
         }
     }

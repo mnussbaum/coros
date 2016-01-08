@@ -1,4 +1,4 @@
-#![feature(fnbox)]
+#![feature(fnbox, recover, std_panic)]
 
 extern crate context;
 extern crate deque;

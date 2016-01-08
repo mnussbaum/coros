@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, panic};
 use std::sync::{
     Mutex,
     RwLock,
@@ -26,7 +26,6 @@ use scoped_threadpool::Pool as ThreadPool;
 use Result;
 use coroutine::{
     Coroutine,
-    CoroutineState,
 };
 use coroutine::io_handle::IoHandle;
 use coroutine::join_handle::JoinHandle;
@@ -118,7 +117,7 @@ impl Pool {
         stack_size: usize,
         thread_index: u32
     ) -> Result<JoinHandle<T>>
-        where F: FnOnce(&mut IoHandle) -> T + Send + 'static,
+        where F: FnOnce(IoHandle) -> T + panic::RecoverSafe + Send + 'static,
               T: Send + 'static,
     {
         let scheduler_handles = match self.scheduler_handles {
@@ -134,12 +133,20 @@ impl Pool {
         };
 
         let (coroutine_result_tx, coroutine_result_rx) = channel();
-        let coroutine_function = Box::new(move |coroutine_handle: &mut IoHandle| {
-            let maybe_coroutine_result = coroutine_body(coroutine_handle);
+        let coroutine_function = Box::new(move |coroutine_handle: IoHandle| {
+            let maybe_coroutine_result = panic::recover(move || {
+                coroutine_body(coroutine_handle)
+            });
 
-            coroutine_handle.coroutine.state = CoroutineState::Terminated;
+            let result = match maybe_coroutine_result {
+                Ok(coroutine_result) => Ok(coroutine_result),
+                Err(err) => {
+                    error!("Coroutine body panicked with: {:?}", err);
+                    Err(CorosError::CoroutinePanic)
+                },
+            };
             coroutine_result_tx
-                .send(maybe_coroutine_result)
+                .send(result)
                 .expect("Coros internal error: attempting to send coroutine result to closed channel");
         });
 
@@ -156,7 +163,7 @@ impl Pool {
     }
 
     pub fn spawn<F, T>(&mut self, coroutine_body: F, stack_size: usize) -> Result<JoinHandle<T>>
-        where F: FnOnce(&mut IoHandle) -> T + Send + 'static,
+        where F: FnOnce(IoHandle) -> T + panic::RecoverSafe + Send + 'static,
               T: Send + 'static,
     {
         let thread_count = self.thread_count;

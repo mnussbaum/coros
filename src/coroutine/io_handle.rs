@@ -1,3 +1,4 @@
+use std::panic::{RecoverSafe, RefRecoverSafe};
 use std::sync::mpsc::channel;
 
 use mio::{
@@ -176,3 +177,6 @@ impl<'a> IoHandle<'a> {
         }
     }
 }
+
+impl<'_> RecoverSafe for IoHandle<'_> {}
+impl<'_> RefRecoverSafe for IoHandle<'_> {}

@@ -29,6 +29,7 @@ pub enum CorosError {
     CoroutineBlockedOnIoAwokenForNotIo,
     CoroutineBlockSendError,
     CoroutineChannelSendError,
+    CoroutinePanic,
     InvalidCoroutineContext(ContextError),
     InvalidCoroutineNoCallback,
     InvalidCoroutineNoContext,
@@ -69,6 +70,9 @@ impl CorosError {
             },
             CorosError::CoroutineChannelSendError => {
                 "Cannot send message via channel to a finshed coroutine"
+            },
+            CorosError::CoroutinePanic => {
+                "Panic while executing coroutine body"
             },
             CorosError::InvalidCoroutineContext(ref err) => err.description(),
             CorosError::InvalidCoroutineNoCallback => {
@@ -135,6 +139,7 @@ impl Error for CorosError {
             CorosError::CoroutineBlockedOnIoAwokenForNotIo => None,
             CorosError::CoroutineBlockSendError => None,
             CorosError::CoroutineChannelSendError => None,
+            CorosError::CoroutinePanic => None,
             CorosError::InvalidCoroutineContext(ref err) => Some(err),
             CorosError::InvalidCoroutineNoCallback => None,
             CorosError::InvalidCoroutineNoContext => None,
