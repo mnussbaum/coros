@@ -27,7 +27,7 @@ git = "https://github.com/kinghajj/deque.git"
 git = "https://github.com/mnussbaum/context-rs.git"
 
 [dependencies.mio]
-git = "https://github.com/mnussbaum/mio.git"
+git = "https://github.com/carllerche/mio.git"
 
 [dependencies.scoped_threadpool]
 git = "https://github.com/mnussbaum/scoped-threadpool-rs.git"
