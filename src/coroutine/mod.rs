@@ -55,6 +55,12 @@ pub struct Coroutine {
     pub state: CoroutineState,
 }
 
+impl Clone for Coroutine {
+    fn clone(&self) -> Coroutine {
+        unreachable!("Apparently needed for deque, but should never be used");
+    }
+}
+
 unsafe impl Send for Coroutine {}
 
 impl Coroutine {

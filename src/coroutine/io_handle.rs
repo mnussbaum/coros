@@ -1,5 +1,6 @@
 use std::panic::{RecoverSafe, RefRecoverSafe};
 use std::sync::mpsc::channel;
+use std::time::Duration;
 
 use mio::{
     EventLoop,
@@ -32,7 +33,7 @@ pub struct IoHandle<'a> {
 }
 
 impl<'a> IoHandle<'a> {
-    pub fn sleep_ms(&mut self, ms: u64) -> Result<()> {
+    pub fn sleep(&mut self, duration: Duration) -> Result<()> {
         self.coroutine.state = CoroutineState::Blocked;
 
         let mio_callback = move |coroutine: Coroutine,
@@ -43,7 +44,7 @@ impl<'a> IoHandle<'a> {
                 Err(_) => return Err(CorosError::SlabFull),
             };
 
-            try!(mio_event_loop.timeout_ms(token, ms));
+            try!(mio_event_loop.timeout(token, duration));
 
             Ok(())
         };
@@ -125,7 +126,7 @@ impl<'a> IoHandle<'a> {
                 Err(_) => return Err(CorosError::SlabFull),
             };
             try!(mio_event_loop.deregister(unsafe { &*raw_io_ptr }));
-            try!(mio_event_loop.timeout_ms(token, 0));
+            try!(mio_event_loop.timeout(token, Duration::new(0, 0)));
 
             Ok(())
         };

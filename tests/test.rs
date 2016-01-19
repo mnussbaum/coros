@@ -134,13 +134,14 @@ fn test_nested_coroutines() {
 }
 
 #[test]
-fn test_sleep_ms() {
+fn test_sleep() {
     let pool_name = "pool_name".to_string();
     let mut pool = Pool::new(pool_name, 2).unwrap();
     let mut guard1 = pool.spawn_with_thread_index(|_| { 1 }, STACK_SIZE, 0).unwrap();
     let mut guard2 = pool.spawn_with_thread_index(
         |mut coroutine_handle: IoHandle| {
-            coroutine_handle.sleep_ms(500).unwrap();
+            let sleep_duration = StdDuration::from_millis(500);
+            coroutine_handle.sleep(sleep_duration).unwrap();
             2
         },
         STACK_SIZE,
@@ -170,7 +171,8 @@ fn test_sleeping_coroutine_is_not_awoken_for_io() {
                 PollOpt::level(),
             ).unwrap();
             let start_time = now();
-            coroutine_handle.sleep_ms(500).unwrap();
+            let sleep_duration = StdDuration::from_millis(500);
+            coroutine_handle.sleep(sleep_duration).unwrap();
             assert!((now() - start_time) >= Duration::milliseconds(400));
             coroutine_handle.deregister(&reader).unwrap();
         },
@@ -379,7 +381,8 @@ fn test_blocked_coroutines_are_waited_on_by_pool_stop() {
 
     let mut guard = pool.spawn(
         move |mut coroutine_handle: IoHandle| {
-            coroutine_handle.sleep_ms(500).unwrap();
+            let sleep_duration = StdDuration::from_millis(500);
+            coroutine_handle.sleep(sleep_duration).unwrap();
             1
         },
         STACK_SIZE,

@@ -13,7 +13,7 @@ use context::stack::{
     Stack,
 };
 use deque::{
-    BufferPool,
+    self,
     Stealer,
     Worker,
 };
@@ -82,7 +82,7 @@ impl Pool {
         let (result_tx, result_rx) = channel();
 
         for _ in 0..thread_count {
-            let (work_provider, work_stealer) = BufferPool::<Coroutine>::new().deque();
+            let (work_provider, work_stealer) = deque::new();
             work_providers.push(work_provider);
             work_stealers.push(work_stealer);
         }

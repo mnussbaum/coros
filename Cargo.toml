@@ -15,6 +15,7 @@ path = "tests/test.rs"
 log = "^0.3.1"
 num_cpus = "*"
 rand = "^0.3.10"
+slab  = "0.1.0"
 
 [dev-dependencies]
 time = "0.1.32"

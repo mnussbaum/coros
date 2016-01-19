@@ -4,6 +4,7 @@ use std::sync::mpsc::{
     TryRecvError,
 };
 use std::sync::Mutex;
+use std::time::Duration;
 
 use context::Context;
 use deque::{
@@ -11,7 +12,7 @@ use deque::{
     Stolen,
     Worker,
 };
-use mio::util::Slab;
+use slab::Slab;
 use mio::{
     EventLoop,
     EventSet,
@@ -23,7 +24,7 @@ use coroutine::Coroutine;
 use error::CorosError;
 use Result;
 
-pub type BlockedCoroutineSlab = Slab<(Coroutine, Option<Sender<EventSet>>)>;
+pub type BlockedCoroutineSlab = Slab<(Coroutine, Option<Sender<EventSet>>), Token>;
 
 pub struct Scheduler {
     blocked_coroutines: BlockedCoroutineSlab,
@@ -116,7 +117,11 @@ impl Scheduler {
             try!(self.move_received_work_onto_queue());
 
             let raw_self_ptr: *mut Scheduler = self;
-            try!(self.mio_event_loop.run_once(unsafe { &mut *raw_self_ptr }, Some(10)));
+            let event_loop_tick_timeout = Some(Duration::from_millis(10));
+            try!(self.mio_event_loop.run_once(
+                    unsafe { &mut *raw_self_ptr },
+                    event_loop_tick_timeout
+            ));
 
             let work_result = match self.work_provider.pop() {
                 Some(coroutine) => self.run_coroutine(coroutine),

@@ -6,6 +6,7 @@ extern crate deque;
 extern crate mio;
 extern crate rand;
 extern crate scoped_threadpool;
+extern crate slab;
 
 mod coroutine;
 pub use coroutine::io_handle::IoHandle;
