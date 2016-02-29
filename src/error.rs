@@ -196,15 +196,15 @@ impl From<NotifyError<Token>> for CorosError {
     }
 }
 
-impl<'a> From<PoisonError<RwLockReadGuard<'a, ThreadPool>>> for CorosError {
-    fn from(err: PoisonError<RwLockReadGuard<'a, ThreadPool>>) -> CorosError {
+impl<'a> From<PoisonError<RwLockReadGuard<'a, Option<ThreadPool>>>> for CorosError {
+    fn from(err: PoisonError<RwLockReadGuard<'a, Option<ThreadPool>>>) -> CorosError {
         error!("Error obtaining thread pool read lock {:?}", err);
         CorosError::ThreadPoolReadLockPoisoned
     }
 }
 
-impl<'a> From<PoisonError<RwLockWriteGuard<'a, ThreadPool>>> for CorosError {
-    fn from(err: PoisonError<RwLockWriteGuard<'a, ThreadPool>>) -> CorosError {
+impl<'a> From<PoisonError<RwLockWriteGuard<'a, Option<ThreadPool>>>> for CorosError {
+    fn from(err: PoisonError<RwLockWriteGuard<'a, Option<ThreadPool>>>) -> CorosError {
         error!("Error obtaining thread pool write lock {:?}", err);
         CorosError::ThreadPoolWriteLockPoisoned
     }

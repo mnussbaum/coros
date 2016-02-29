@@ -13,7 +13,11 @@ pub use coroutine::io_handle::IoHandle;
 pub use coroutine::join_handle::JoinHandle;
 mod error;
 pub use error::CorosError;
-pub use coroutine::channel;
+pub use coroutine::channel::{
+    self,
+    Receiver,
+    Sender,
+};
 mod scheduler;
 mod pool;
 pub use pool::Pool;

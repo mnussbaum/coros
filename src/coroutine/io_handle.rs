@@ -1,5 +1,6 @@
 use std::panic::{RecoverSafe, RefRecoverSafe};
 use std::sync::mpsc::channel;
+use std::sync::MutexGuard;
 use std::time::Duration;
 
 use mio::{
@@ -52,7 +53,7 @@ impl<'a> IoHandle<'a> {
         self.suspend_with_callback(Box::new(mio_callback))
     }
 
-    pub fn recv<M: Send>(&mut self, rx: &Receiver<M>) -> Result<M> {
+    pub fn recv<M: Send>(&mut self, rx: &MutexGuard<Receiver<M>>) -> Result<M> {
         let blocked_message_tx = rx.blocked_message_tx.clone();
         self.coroutine.state = CoroutineState::Blocked;
 

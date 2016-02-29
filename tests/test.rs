@@ -5,6 +5,7 @@ extern crate time;
 
 extern crate coros;
 
+use std::sync::Mutex;
 use std::time::Duration as StdDuration;
 
 use bytes::SliceBuf;
@@ -14,9 +15,11 @@ use time::{
     now,
 };
 
-use coros::Pool;
-use coros::IoHandle;
-use coros::channel;
+use coros::{
+    channel,
+    IoHandle,
+    Pool,
+};
 
 const STACK_SIZE: usize = 2 * 1024 * 1024;
 
@@ -190,9 +193,11 @@ fn test_channel_recv() {
     let pool_name = "pool_name".to_string();
     let mut pool = Pool::new(pool_name, 1).unwrap();
     let (sender, receiver) = channel::new::<u8>();
+    let receiver_mutex = Mutex::new(receiver);
     let mut guard = pool.spawn(
         move |mut coroutine_handle: IoHandle| {
-            coroutine_handle.recv(&receiver).unwrap()
+            let receiver_guard = receiver_mutex.lock().unwrap();
+            coroutine_handle.recv(&receiver_guard).unwrap()
         },
         STACK_SIZE,
     ).unwrap();

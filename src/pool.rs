@@ -42,7 +42,7 @@ pub struct Pool {
     pub is_running: bool,
     pub name: String,
     thread_count: u32,
-    thread_pool: RwLock<ThreadPool>,
+    thread_pool: RwLock<Option<ThreadPool>>,
     scheduler_result_rx: Option<Receiver<Result<()>>>,
     scheduler_handles: Option<Vec<SchedulerHandle>>,
 }
@@ -65,7 +65,7 @@ impl Pool {
             is_running: false,
             name: name,
             thread_count: thread_count,
-            thread_pool: RwLock::new(ThreadPool::new(thread_count)),
+            thread_pool: RwLock::new(None),
             scheduler_result_rx: None,
             scheduler_handles: None,
         };
@@ -181,7 +181,8 @@ impl Pool {
         }
         self.is_running = true;
 
-        let mut thread_pool =  try!(self.thread_pool.write());
+        let mut maybe_thread_pool =  try!(self.thread_pool.write());
+        let mut thread_pool = ThreadPool::new(self.thread_count);
         let scheduler_handles = match self.scheduler_handles {
             Some(ref scheduler_handles) => scheduler_handles,
             None => return Err(CorosError::CannotStartPoolWithoutSchedulers),
@@ -195,10 +196,11 @@ impl Pool {
                     Some(mut scheduler) => {
                         scoped.execute(move || { scheduler.run() })
                     },
-                    None => panic!("Coros internal error: starting pool without full set of schedulers"),
+                    None => panic!("Coros internal error: starting coroutine pool without full set of schedulers"),
                 }
             }
         });
+        *maybe_thread_pool = Some(thread_pool);
         self.is_running = true;
 
         Ok(())
@@ -211,7 +213,11 @@ impl Pool {
         let mut errors = Vec::with_capacity(self.thread_count as usize);
 
         {
-            let thread_pool =  try!(self.thread_pool.write());
+            let mut maybe_thread_pool =  try!(self.thread_pool.write());
+            let mut thread_pool = match maybe_thread_pool.take() {
+                Some(thread_pool) => thread_pool,
+                None => panic!("Coros internal error: stopping coroutine pool without native thread pool"),
+            };
             let scheduler_handles = match self.scheduler_handles {
                 Some(ref scheduler_handles) => scheduler_handles,
                 None => return Err(CorosError::CannotStartPoolWithoutSchedulers),
@@ -221,7 +227,7 @@ impl Pool {
                     errors.push(CorosError::UnableToSendThreadShutdownSignal);
                 }
             }
-            thread_pool.join_all();
+            thread_pool.join_and_stop();
         }
         {
             let scheduler_result_rx = match self.scheduler_result_rx {
@@ -248,6 +254,8 @@ impl Pool {
 
 impl Drop for Pool {
     fn drop(&mut self) {
-        self.stop().unwrap();
+        if let Err(err) = self.stop() {
+            error!("Error stopping pool in drop: {:?}", err);
+        };
     }
 }
