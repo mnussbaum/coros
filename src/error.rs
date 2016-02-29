@@ -32,7 +32,6 @@ pub enum CorosError {
     CoroutinePanic,
     InvalidCoroutineContext(ContextError),
     InvalidCoroutineNoCallback,
-    InvalidCoroutineNoContext,
     InvalidCoroutineSlabContents,
     InvalidPoolNoSchedulerResultReceiver,
     InvalidThreadForSpawn(u32, u32),
@@ -77,9 +76,6 @@ impl CorosError {
             CorosError::InvalidCoroutineContext(ref err) => err.description(),
             CorosError::InvalidCoroutineNoCallback => {
                 "Coroutine in invalid state, has no execution callback"
-            },
-            CorosError::InvalidCoroutineNoContext => {
-                "Coroutine attempting to run in invalid state, has no execution context"
             },
             CorosError::InvalidCoroutineSlabContents => {
                 "Invalid coroutine slab contents"
@@ -142,7 +138,6 @@ impl Error for CorosError {
             CorosError::CoroutinePanic => None,
             CorosError::InvalidCoroutineContext(ref err) => Some(err),
             CorosError::InvalidCoroutineNoCallback => None,
-            CorosError::InvalidCoroutineNoContext => None,
             CorosError::InvalidCoroutineSlabContents => None,
             CorosError::InvalidPoolNoSchedulerResultReceiver => None,
             CorosError::InvalidThreadForSpawn(_, _) => None,

@@ -169,14 +169,9 @@ impl<'a> IoHandle<'a> {
     fn suspend_with_callback(&mut self, event_loop_registration: EventLoopRegistrationCallback) -> Result<()> {
         self.coroutine.event_loop_registration = Some(event_loop_registration);
 
-        match self.coroutine.context {
-            Some(ref context) => {
-                Context::swap(context, self.scheduler_context);
+        Context::swap(&self.coroutine.context, self.scheduler_context);
 
-                Ok(())
-            },
-            None => Err(CorosError::InvalidCoroutineNoContext),
-        }
+        Ok(())
     }
 }
 

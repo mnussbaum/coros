@@ -13,7 +13,6 @@ pub mod join_handle;
 pub mod channel;
 
 use IoHandle;
-use error::CorosError;
 use Result;
 use scheduler::{
     BlockedCoroutineSlab,
@@ -49,7 +48,7 @@ extern "C" fn context_init(coroutine_ptr: usize, scheduler_context_ptr: usize) -
 pub type EventLoopRegistrationCallback = Box<FnBox(Coroutine, &mut EventLoop<Scheduler>, &mut BlockedCoroutineSlab) -> Result<()>>;
 
 pub struct Coroutine {
-    pub context: Option<Context>,
+    pub context: Context,
     function: Option<Box<FnBox(IoHandle) + Send + 'static>>,
     pub event_loop_registration: Option<EventLoopRegistrationCallback>,
     pub state: CoroutineState,
@@ -69,19 +68,18 @@ impl Coroutine {
         stack: Stack,
     ) -> Coroutine
     {
-        let mut coroutine = Coroutine {
-            context: None,
-            function: Some(function),
-            event_loop_registration: None,
-            state: CoroutineState::New,
-        };
         let context = Context::new(
             context_init,
             0 as usize,
             0 as usize,
             stack,
         );
-        coroutine.context = Some(context);
+        let coroutine = Coroutine {
+            context: context,
+            function: Some(function),
+            event_loop_registration: None,
+            state: CoroutineState::New,
+        };
 
         coroutine
     }
@@ -95,12 +93,7 @@ impl Coroutine {
         try!(self.set_context_to_return_to_scheduler(scheduler_context));
         self.state = CoroutineState::Running;
 
-        match self.context {
-            None => return Err(CorosError::InvalidCoroutineNoContext),
-            Some(ref context) => {
-                Context::swap(scheduler_context, context);
-            },
-        }
+        Context::swap(scheduler_context, &self.context);
 
         Ok(())
     }
@@ -119,22 +112,14 @@ impl Coroutine {
     fn set_context_to_run_coroutine(&mut self) -> Result<()> {
         let raw_self_ptr = self.raw_pointer();
 
-        let context = match self.context {
-            None => return Err(CorosError::InvalidCoroutineNoContext),
-            Some(ref mut context) => context,
-        };
-        try!(context.set_arg(raw_self_ptr as usize, 0));
+        try!(self.context.set_arg(raw_self_ptr as usize, 0));
 
         Ok(())
     }
 
     fn set_context_to_return_to_scheduler(&mut self, scheduler_context: &Context) -> Result<()> {
-        let context = match self.context {
-            None => return Err(CorosError::InvalidCoroutineNoContext),
-            Some(ref mut context) => context,
-        };
         let scheduler_context_ptr = scheduler_context.borrow() as *const Context;
-        try!(context.set_arg(scheduler_context_ptr as usize, 1));
+        try!(self.context.set_arg(scheduler_context_ptr as usize, 1));
 
         Ok(())
     }
